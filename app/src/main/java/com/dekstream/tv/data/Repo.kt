@@ -21,16 +21,50 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     private val epgShort = ConcurrentHashMap<Int, Pair<Long, List<Program>>>()
     private val epgFull = ConcurrentHashMap<Int, Pair<Long, List<Program>>>()
 
-    suspend fun liveCategories() = lock.withLock { liveCats ?: provider.liveCategories().also { liveCats = it } }
-    suspend fun vodCategories() = lock.withLock { vodCats ?: provider.vodCategories().also { vodCats = it } }
-    suspend fun seriesCategories() = lock.withLock { seriesCats ?: provider.seriesCategories().also { seriesCats = it } }
+    // ---- Raw provider data (cached) ----
+    suspend fun rawLiveCategories(): List<Category> =
+        if (!source.loadLive) emptyList() else lock.withLock { liveCats ?: provider.liveCategories().also { liveCats = it } }
+    suspend fun rawVodCategories(): List<Category> =
+        if (!source.loadMovies) emptyList() else lock.withLock { vodCats ?: provider.vodCategories().also { vodCats = it } }
+    suspend fun rawSeriesCategories(): List<Category> =
+        if (!source.loadShows) emptyList() else lock.withLock { seriesCats ?: provider.seriesCategories().also { seriesCats = it } }
+    suspend fun rawChannels(): List<Channel> =
+        if (!source.loadLive) emptyList() else allLock.withLock { allLive ?: provider.allChannels().also { allLive = it } }
 
-    /** All live channels (one big call, cached). */
-    suspend fun allChannels(): List<Channel> = allLock.withLock {
-        allLive ?: provider.allChannels().also { allLive = it }
+    // ---- What this profile sees: hidden items removed, renames/numbers/guide matches applied ----
+    private fun viewCats(list: List<Category>, prefix: String) = list
+        .filter { (prefix + it.id) !in prefs.hiddenCats }
+        .map { c -> prefs.catNames[prefix + c.id]?.let { c.copy(name = it) } ?: c }
+
+    suspend fun liveCategories() = viewCats(rawLiveCategories(), "l:")
+    suspend fun vodCategories() = viewCats(rawVodCategories(), "v:")
+    suspend fun seriesCategories() = viewCats(rawSeriesCategories(), "s:")
+
+    /** All live channels for this profile. */
+    suspend fun allChannels(): List<Channel> {
+        val raw = rawChannels()
+        val hidden = prefs.hiddenChannels
+        val hiddenCats = prefs.hiddenCats
+        val names = prefs.channelNames
+        val nums = prefs.channelNumbers
+        val ov = prefs.epgOverrides
+        if (hidden.isEmpty() && hiddenCats.isEmpty() && names.isEmpty() && nums.isEmpty() && ov.isEmpty()) return raw
+        return raw.asSequence()
+            .filter { it.streamId !in hidden && ("l:" + it.categoryId) !in hiddenCats }
+            .map { c ->
+                if (c.streamId !in names && c.streamId !in nums && c.streamId !in ov) c
+                else c.copy(
+                    name = names[c.streamId] ?: c.name,
+                    num = nums[c.streamId] ?: c.num,
+                    epgChannelId = ov[c.streamId] ?: c.epgChannelId,
+                )
+            }.toList()
     }
 
     suspend fun channels(categoryId: String): List<Channel> = allChannels().filter { it.categoryId == categoryId }
+
+    /** Forget cached guide data after a guide match changes. */
+    fun clearEpgCache() { epgShort.clear(); epgFull.clear() }
 
     suspend fun vods(categoryId: String): List<Vod> =
         vodByCat[categoryId] ?: provider.vods(categoryId).also { vodByCat[categoryId] = it }
@@ -41,11 +75,18 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     suspend fun vodInfo(v: Vod) = provider.vodInfo(v)
     suspend fun seriesInfo(s: Series) = provider.seriesInfo(s)
 
+    /** Guide entries from the whole-guide index for channels matched by hand. */
+    private suspend fun overrideEpg(c: Channel): List<Program>? {
+        val id = prefs.epgOverrides[c.streamId] ?: return null
+        val idx = guideIndex() ?: return null
+        return idx.programmesFor(c.copy(epgChannelId = id)).map { Program(it.title, it.desc, it.startMs, it.endMs, c.hasArchive && it.endMs <= System.currentTimeMillis()) }
+    }
+
     /** Now/next for a channel, cached 5 minutes. */
     suspend fun nowNext(c: Channel): List<Program> {
         val now = System.currentTimeMillis()
         epgShort[c.streamId]?.let { (t, l) -> if (now - t < 5 * 60_000) return l }
-        val l = runCatching { provider.shortEpg(c) }.getOrDefault(emptyList()).filter { it.endMs > now }
+        val l = (overrideEpg(c) ?: runCatching { provider.shortEpg(c) }.getOrDefault(emptyList())).filter { it.endMs > now }.take(3)
         epgShort[c.streamId] = now to l
         return l
     }
@@ -54,7 +95,7 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     suspend fun fullEpg(c: Channel): List<Program> {
         val now = System.currentTimeMillis()
         epgFull[c.streamId]?.let { (t, l) -> if (now - t < 30 * 60_000) return l }
-        val l = runCatching { provider.fullEpg(c) }.getOrDefault(emptyList())
+        val l = overrideEpg(c) ?: runCatching { provider.fullEpg(c) }.getOrDefault(emptyList())
         epgFull[c.streamId] = now to l
         return l
     }
@@ -62,8 +103,9 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     /** The whole-guide index (XMLTV) for sports matching, when this source has one. */
     suspend fun guideIndex(): EpgIndex? {
         if (provider is M3uProvider) allChannels() // playlist header may carry the guide URL
-        val url = provider.xmltvUrl() ?: return null
-        return runCatching { epg.ensure(provider.cacheKey, url); epg }.getOrNull()
+        val urls = provider.xmltvUrls()
+        if (urls.isEmpty()) return null
+        return runCatching { epg.ensure(provider.cacheKey, urls); epg }.getOrNull()
     }
 
     fun liveRequest(c: Channel) = PlayRequest(

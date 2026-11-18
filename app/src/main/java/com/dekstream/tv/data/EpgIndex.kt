@@ -30,18 +30,59 @@ class EpgIndex(private val http: OkHttpClient) {
     @Volatile private var byChannel: Map<String, List<Entry>> = emptyMap()
     /** Normalised channel display-name -> guide id, for playlists without tvg-id. */
     @Volatile private var byName: Map<String, String> = emptyMap()
+    /** Guide id -> display name (for matching guides to channels by hand). */
+    @Volatile private var idNames: Map<String, String> = emptyMap()
+
+    /** All guide channels as (id, name), for the manual matcher. */
+    fun guideChannels(): List<Pair<String, String>> =
+        byChannel.keys.map { it to (idNames[it] ?: it) }.sortedBy { it.second.lowercase() }
+
+    private fun mergeGuides(a: Map<String, List<Entry>>, b: Map<String, List<Entry>>): Map<String, List<Entry>> {
+        if (a.isEmpty()) return b
+        val out = HashMap(a)
+        for ((id, extra) in b) {
+            val base = out[id]
+            if (base == null) { out[id] = extra; continue }
+            // Gap filling: keep the higher-priority entries, add the other guide's shows where nothing is listed.
+            val filled = base.toMutableList()
+            for (e in extra) if (filled.none { it.startMs < e.endMs && e.startMs < it.endMs }) filled += e
+            out[id] = filled.sortedBy { it.startMs }
+        }
+        return out
+    }
 
     private val _status = MutableStateFlow(Status.Idle)
     val status: StateFlow<Status> = _status
 
-    /** Loads (or reuses, if younger than 30 min) the XMLTV guide at [url]. */
-    suspend fun ensure(key: String, url: String): Map<String, List<Entry>> = lock.withLock {
+    /** Single-guide convenience. */
+    suspend fun ensure(key: String, url: String): Map<String, List<Entry>> = ensure(key, listOf(url))
+
+    /**
+     * Loads (or reuses, if younger than 30 min) one or more XMLTV guides, highest priority first.
+     * Lower-priority guides add channels the others lack and fill time gaps in channels they share.
+     */
+    suspend fun ensure(key: String, urls: List<String>): Map<String, List<Entry>> = lock.withLock {
         val fresh = System.currentTimeMillis() - loadedAt < 30 * 60_000
         if (fresh && loadedFor == key && byChannel.isNotEmpty()) return byChannel
         if (loadedFor != key) { byChannel = emptyMap(); byName = emptyMap() }
         _status.value = Status.Loading
         try {
-            byChannel = download(url)
+            var merged: Map<String, List<Entry>> = emptyMap()
+            val names = HashMap<String, String>()
+            val ids = HashMap<String, String>()
+            var firstError: Exception? = null
+            for (u in urls.distinct()) {
+                try {
+                    val got = download(u)
+                    merged = mergeGuides(merged, got)
+                    byName.forEach { (n, id) -> names.putIfAbsent(n, id) }
+                    idNames.forEach { (id, n) -> ids.putIfAbsent(id, n) }
+                } catch (e: Exception) { if (firstError == null) firstError = e }
+            }
+            if (merged.isEmpty() && firstError != null) throw firstError!!
+            byName = names
+            idNames = ids
+            byChannel = merged
             loadedAt = System.currentTimeMillis()
             loadedFor = key
             _status.value = Status.Ready
@@ -85,6 +126,7 @@ class EpgIndex(private val http: OkHttpClient) {
 
     private suspend fun download(url: String): Map<String, List<Entry>> = withContext(Dispatchers.IO) {
         val names = HashMap<String, String>(8192)
+        val displayNames = HashMap<String, String>(8192)
         val req = Request.Builder().url(url).header("User-Agent", XtreamApi.USER_AGENT).build()
         val now = System.currentTimeMillis()
         val from = now - 4 * 3600_000L
@@ -132,7 +174,9 @@ class EpgIndex(private val http: OkHttpClient) {
                         "desc" -> if (inProg) field = "desc"
                     }
                     XmlPullParser.TEXT -> if (inName) {
-                        val n = normName(p.text ?: "")
+                        val raw = (p.text ?: "").trim()
+                        if (raw.isNotEmpty()) displayNames.putIfAbsent(chanId!!, raw)
+                        val n = normName(raw)
                         if (n.isNotEmpty()) names.putIfAbsent(n, chanId!!)
                     } else if (inProg && keep) when (field) {
                         "title" -> title += p.text
@@ -154,6 +198,7 @@ class EpgIndex(private val http: OkHttpClient) {
             }
         }
         byName = names
+        idNames = displayNames
         out.mapValues { (_, l) -> l.sortedBy { it.startMs } }
     }
 }

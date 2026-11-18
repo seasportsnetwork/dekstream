@@ -27,10 +27,17 @@ data class Source(
     val epgUrl: String = "",
     /** MAC address (Stalker portals). */
     val mac: String = "",
+    /** What this playlist loads. */
+    val loadLive: Boolean = true,
+    val loadMovies: Boolean = true,
+    val loadShows: Boolean = true,
+    /** Extra XMLTV guides, highest priority first; they fill channels/gaps the main guide lacks. */
+    val extraEpg: List<String> = emptyList(),
 ) {
     fun toJson() = JSONObject().apply {
         put("id", id); put("name", name); put("type", type.name); put("url", url)
         put("user", username); put("pass", password); put("epg", epgUrl); put("mac", mac)
+        put("live", loadLive); put("movies", loadMovies); put("shows", loadShows); put("extraEpg", extraEpg.joinToString("\n"))
     }
 
     companion object {
@@ -43,6 +50,10 @@ data class Source(
             password = o.optString("pass"),
             epgUrl = o.optString("epg"),
             mac = o.optString("mac"),
+            loadLive = o.optBoolean("live", true),
+            loadMovies = o.optBoolean("movies", true),
+            loadShows = o.optBoolean("shows", true),
+            extraEpg = o.optString("extraEpg").split('\n').map { it.trim() }.filter { it.startsWith("http") },
         )
     }
 }

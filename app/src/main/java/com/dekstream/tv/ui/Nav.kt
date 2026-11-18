@@ -44,6 +44,7 @@ sealed interface Route {
     data object SportsSettings : Route
     data class KidsRules(val profileId: String) : Route
     data object AppearanceSettings : Route
+    data object ChannelManager : Route
     /** Full-screen multiview pre-filled with channels (e.g. from Sports). */
     data class Multiview(val channels: List<Channel>) : Route
     /** Add a playlist (source == null) or edit one. */
@@ -59,5 +60,15 @@ class AppState {
     fun push(r: Route) { stack.add(r) }
     fun pop(): Boolean = if (stack.isNotEmpty()) { stack.removeAt(stack.lastIndex); true } else false
 
-    fun play(req: PlayRequest, zapList: List<Channel> = emptyList()) = push(Route.Player(req, zapList))
+    /** A locked channel waiting for the parent PIN. */
+    var lockedPending by mutableStateOf<Route.Player?>(null)
+
+    fun play(req: PlayRequest, zapList: List<Channel> = emptyList()) {
+        val prefs = com.dekstream.tv.DekStreamApp.instance.session?.prefs
+        val ch = req.channel
+        // Locked channels and zapping lists skip locked entries unless the PIN is given.
+        val zap = if (prefs == null) zapList else zapList.filter { !prefs.isChannelLocked(it) }
+        if (ch != null && prefs != null && prefs.isChannelLocked(ch)) lockedPending = Route.Player(req, zap)
+        else push(Route.Player(req, zap))
+    }
 }
