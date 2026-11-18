@@ -176,7 +176,7 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), onExit: (() -> Unit)? 
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@kotlin.OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Modifier.combinedClickableCompat(onClick: () -> Unit, onLongClick: () -> Unit): Modifier =
     this.combinedClickable(onClick = onClick, onLongClick = onLongClick)
