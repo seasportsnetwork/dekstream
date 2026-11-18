@@ -19,7 +19,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -230,6 +234,20 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                 modifier = Modifier.align(Alignment.Center).clip(RoundedCornerShape(8.dp))
                     .background(Color(0xCC000000)).padding(16.dp),
             )
+        }
+
+        // On-screen back button (touch screens); shows with the controls or the channel banner.
+        AnimatedVisibility(
+            visible = controllerVisible || bannerVisible,
+            enter = fadeIn(), exit = fadeOut(),
+            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
+        ) {
+            IconButton(
+                onClick = onExit,
+                modifier = Modifier.clip(androidx.compose.foundation.shape.CircleShape).background(Color(0x99000000)),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+            }
         }
 
         AnimatedVisibility(

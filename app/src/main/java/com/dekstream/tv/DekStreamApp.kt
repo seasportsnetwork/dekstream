@@ -5,6 +5,7 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.res.Configuration
 import com.dekstream.tv.data.Account
+import com.dekstream.tv.data.EpgIndex
 import com.dekstream.tv.data.Prefs
 import com.dekstream.tv.data.Repo
 import com.dekstream.tv.data.SportsRepo
@@ -19,6 +20,8 @@ class DekStreamApp : Application() {
     lateinit var prefs: Prefs
         private set
     lateinit var sports: SportsRepo
+        private set
+    lateinit var epg: EpgIndex
         private set
 
     /** Null until signed in. */
@@ -35,6 +38,7 @@ class DekStreamApp : Application() {
             .build()
         prefs = Prefs(this)
         sports = SportsRepo(http)
+        epg = EpgIndex(http)
         prefs.account?.let { useAccount(it) }
     }
 
