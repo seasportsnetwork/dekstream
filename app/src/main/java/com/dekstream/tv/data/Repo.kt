@@ -76,7 +76,7 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
 
     fun catchupRequest(c: Channel, p: Program): PlayRequest? {
         val url = provider.catchupUrl(c, p, prefs.serverTimezone) ?: return null
-        return PlayRequest(url = url, title = p.title, subtitle = "${c.name} · Catch-up", isLive = false, poster = c.icon)
+        return PlayRequest(url = url, title = p.title, subtitle = "${c.name} · Catch-up", isLive = false, poster = c.icon, channel = c)
     }
 
     fun vodRequest(v: Vod): PlayRequest {

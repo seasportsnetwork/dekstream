@@ -10,26 +10,54 @@ import androidx.annotation.OptIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PictureInPictureAlt
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay10
+import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -39,16 +67,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -66,69 +103,113 @@ import com.dekstream.tv.data.Program
 import com.dekstream.tv.data.ProgressEntry
 import com.dekstream.tv.data.XtreamApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
-fun buildPlayer(context: android.content.Context, live: Boolean): ExoPlayer {
+fun buildPlayer(context: android.content.Context, live: Boolean, keepBehindMs: Int = 0): ExoPlayer {
     val app = DekStreamApp.instance
     val dataSource = OkHttpDataSource.Factory(app.http).setUserAgent(XtreamApi.USER_AGENT)
     val loadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            if (live) 8_000 else 15_000,   // min buffer
-            if (live) 30_000 else 60_000,  // max buffer
-            1_500,                         // buffer before starting playback
-            3_000,                         // buffer after a rebuffer
+            if (live) 8_000 else 15_000,
+            if (live) 30_000 else 60_000,
+            1_500,
+            3_000,
         )
+        .apply { if (keepBehindMs > 0) setBackBuffer(keepBehindMs, true) }
         .build()
     return ExoPlayer.Builder(context)
         .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
         .setLoadControl(loadControl)
+        .setSeekBackIncrementMs(10_000)
+        .setSeekForwardIncrementMs(10_000)
         .build()
+}
+
+private val resizeModes = listOf(
+    AspectRatioFrameLayout.RESIZE_MODE_FIT to "Fit",
+    AspectRatioFrameLayout.RESIZE_MODE_ZOOM to "Fill (crop)",
+    AspectRatioFrameLayout.RESIZE_MODE_FILL to "Stretch",
+)
+
+fun fmtDuration(ms: Long): String {
+    if (ms < 0) return "--:--"
+    val s = ms / 1000
+    val h = s / 3600; val m = (s % 3600) / 60; val sec = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
 }
 
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Unit) {
     val context = LocalContext.current
+    val activity = context as? MainActivity
     val app = DekStreamApp.instance
     val repo = app.repo
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+
     var current by remember { mutableStateOf(request) }
     var error by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(true) }
-    var showInfo by remember { mutableIntStateOf(0) } // bump to show the channel banner
-    var bannerVisible by remember { mutableStateOf(true) }
-    var controllerVisible by remember { mutableStateOf(false) }
-    val focus = remember { FocusRequester() }
+    var playing by remember { mutableStateOf(true) }
+    var controls by remember { mutableStateOf(true) }
+    var touch by remember { mutableIntStateOf(0) }         // bump to keep controls up
+    var showChannels by remember { mutableStateOf(false) }
+    var showOptions by remember { mutableStateOf(false) }
+    var digits by remember { mutableStateOf("") }
+    var resizeIdx by remember { mutableIntStateOf(0) }
+    var sleepAt by remember { mutableLongStateOf(0L) }
+    var position by remember { mutableLongStateOf(0L) }
+    var duration by remember { mutableLongStateOf(0L) }
+    var isLiveWindow by remember { mutableStateOf(false) }
+    var behindLive by remember { mutableLongStateOf(0L) }
+    val rootFocus = remember { FocusRequester() }
+    val playFocus = remember { FocusRequester() }
+    var playerView by remember { mutableStateOf<PlayerView?>(null) }
+    val pip = app.inPip
 
-    val player = remember { buildPlayer(context, request.isLive) }
+    // Keep up to 5 minutes behind live so live TV can be paused and rewound (HLS).
+    val player = remember { buildPlayer(context, request.isLive, keepBehindMs = if (request.isLive) 300_000 else 0) }
 
-    // Full screen + keep screen on while playing.
     DisposableEffect(Unit) {
-        val act = context as? Activity
-        val window = act?.window
+        app.playerActive = true
+        val window = (context as? Activity)?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val ctrl = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
         ctrl?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         ctrl?.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
+            app.playerActive = false
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             ctrl?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
-    // Listener: errors, buffering, auto-retry for live streams.
+    // Pause when the app goes to the background (but keep playing in picture-in-picture).
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle) {
+        val obs = LifecycleEventObserver { _, e ->
+            if (e == Lifecycle.Event.ON_STOP) player.pause()
+            if (e == Lifecycle.Event.ON_START && current.isLive) player.play()
+        }
+        lifecycle.addObserver(obs)
+        onDispose { lifecycle.removeObserver(obs) }
+    }
+
     DisposableEffect(player) {
         val l = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
                 if (state == Player.STATE_READY) error = null
             }
+            override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying || player.playWhenReady }
             override fun onPlayerError(e: PlaybackException) {
-                error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase()
-                    .replaceFirstChar { it.uppercase() }
+                error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
                 if (current.isLive) {
-                    // Live streams often hiccup: retry from the live edge.
-                    player.prepare()
-                    player.play()
+                    scope.launch {
+                        delay(2_000)
+                        player.seekToDefaultPosition(); player.prepare(); player.play()
+                    }
                 }
             }
         }
@@ -136,155 +217,411 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         onDispose { player.removeListener(l) }
     }
 
-    // (Re)load when the item changes (channel zapping swaps `current`).
+    // Load whenever the item changes (zapping, start over, back to live).
     LaunchedEffect(current.url) {
         error = null
-        player.setMediaItem(MediaItem.fromUri(current.url), current.startPositionMs)
+        val url = runCatching { repo?.provider?.resolve(current.url) ?: current.url }.getOrDefault(current.url)
+        player.setMediaItem(MediaItem.fromUri(url), current.startPositionMs)
         player.prepare()
         player.playWhenReady = true
-        showInfo++
+        touch++
     }
 
-    // Save resume position every 10 s and on exit.
-    fun saveProgress() {
-        val key = current.progressKey ?: return
-        val pos = player.currentPosition
-        val dur = player.duration
-        if (dur <= 0 || pos < 10_000) return
-        app.prefs.saveProgress(ProgressEntry(key, current.title, current.subtitle, current.poster, current.url, pos, dur, System.currentTimeMillis()))
-    }
-    LaunchedEffect(current.progressKey) {
-        while (current.progressKey != null) { delay(10_000); saveProgress() }
-    }
-    DisposableEffect(Unit) {
-        onDispose {
-            saveProgress()
-            player.release()
+    // Position ticker for the seek bar and live-edge offset.
+    LaunchedEffect(player) {
+        while (true) {
+            position = player.currentPosition.coerceAtLeast(0)
+            duration = player.duration
+            isLiveWindow = player.isCurrentMediaItemLive
+            behindLive = if (isLiveWindow && duration > 0) (duration - position).coerceAtLeast(0) else 0
+            delay(500)
         }
     }
 
-    // Channel banner auto-hides after 5 s.
-    LaunchedEffect(showInfo) { bannerVisible = true; delay(5_000); bannerVisible = false }
+    fun saveProgress() {
+        val key = current.progressKey ?: return
+        val pos = player.currentPosition; val dur = player.duration
+        if (dur <= 0 || pos < 10_000) return
+        app.prefs.saveProgress(ProgressEntry(key, current.title, current.subtitle, current.poster, current.url, pos, dur, System.currentTimeMillis()))
+    }
+    LaunchedEffect(current.progressKey) { while (current.progressKey != null) { delay(10_000); saveProgress() } }
+    DisposableEffect(Unit) { onDispose { saveProgress(); player.release() } }
+
+    // Auto-hide controls 5 s after the last interaction.
+    LaunchedEffect(touch, controls, showOptions, showChannels) {
+        if (controls && !showOptions && !showChannels) { delay(5_000); controls = false }
+    }
+    LaunchedEffect(controls) { if (!controls) runCatching { rootFocus.requestFocus() } }
+
+    // Sleep timer.
+    LaunchedEffect(sleepAt) {
+        if (sleepAt > 0) {
+            delay((sleepAt - System.currentTimeMillis()).coerceAtLeast(0))
+            player.pause(); onExit()
+        }
+    }
+
+    fun switchTo(c: Channel) {
+        val r = repo ?: return
+        app.prefs.markChannelWatched(c.streamId)
+        current = r.liveRequest(c)
+        showChannels = false
+    }
 
     fun zap(delta: Int) {
         val ch = current.channel ?: return
-        if (zapList.size < 2 || repo == null) return
-        val idx = zapList.indexOfFirst { it.streamId == ch.streamId }
-        if (idx < 0) return
-        val next = zapList[(idx + delta + zapList.size) % zapList.size]
-        app.prefs.markChannelWatched(next.streamId)
-        current = repo.liveRequest(next)
+        if (zapList.size < 2) return
+        val idx = zapList.indexOfFirst { it.streamId == ch.streamId }.coerceAtLeast(0)
+        switchTo(zapList[(idx + delta + zapList.size) % zapList.size])
     }
 
-    BackHandler { onExit() }
-    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+    // Number-key jumps: type digits, wait a moment, jump to that channel number.
+    LaunchedEffect(digits) {
+        if (digits.isEmpty()) return@LaunchedEffect
+        delay(1_500)
+        val n = digits.toIntOrNull()
+        digits = ""
+        if (n != null) {
+            val target = zapList.firstOrNull { it.num == n } ?: repo?.allChannels()?.firstOrNull { it.num == n }
+            if (target != null) switchTo(target)
+        }
+    }
+
+    val epg by produceState<List<Program>>(emptyList(), current.channel?.streamId, current.isLive) {
+        val ch = current.channel
+        value = if (ch != null && repo != null) repo.nowNext(ch) else emptyList()
+    }
+    val nowProg = epg.firstOrNull { it.isLive() }
+    val nextProg = epg.firstOrNull { it.startMs > System.currentTimeMillis() }
+
+    fun startOver() {
+        val ch = current.channel ?: return
+        val p = nowProg ?: return
+        repo?.catchupRequest(ch, p)?.let { current = it }
+    }
+    fun backToLive() { current.channel?.let { switchTo(it) } }
+
+    fun showControls() { controls = true; touch++ }
+
+    BackHandler {
+        when {
+            showOptions -> showOptions = false
+            showChannels -> showChannels = false
+            controls && !pip -> controls = false
+            else -> onExit()
+        }
+    }
+    LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
+    LaunchedEffect(controls) { if (controls) { delay(50); runCatching { playFocus.requestFocus() } } }
+    LaunchedEffect(pip) { playerView?.resizeMode = if (pip) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeModes[resizeIdx].first }
+
+    val canStartOver = current.isLive && current.channel?.hasArchive == true && nowProg != null
+    val isCatchup = !current.isLive && current.channel != null
 
     Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .focusRequester(focus)
+            .focusRequester(rootFocus)
             .focusable()
             .onPreviewKeyEvent { ev ->
-                val native = ev.nativeKeyEvent
-                if (native.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
-                // With the control bar hidden, up/down changes channel on live TV.
-                if (!controllerVisible && current.isLive && current.channel != null) {
-                    when (native.keyCode) {
-                        KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_CHANNEL_UP -> { zap(-1); return@onPreviewKeyEvent true }
-                        KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(1); return@onPreviewKeyEvent true }
-                        KeyEvent.KEYCODE_INFO -> { showInfo++; return@onPreviewKeyEvent true }
-                    }
+                val k = ev.nativeKeyEvent
+                if (k.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                touch++
+                // Digits jump channels from anywhere.
+                val digit = when (k.keyCode) {
+                    in KeyEvent.KEYCODE_0..KeyEvent.KEYCODE_9 -> k.keyCode - KeyEvent.KEYCODE_0
+                    in KeyEvent.KEYCODE_NUMPAD_0..KeyEvent.KEYCODE_NUMPAD_9 -> k.keyCode - KeyEvent.KEYCODE_NUMPAD_0
+                    else -> -1
                 }
-                false
-            },
+                if (digit >= 0 && current.channel != null) { digits = (digits + digit).takeLast(4); return@onPreviewKeyEvent true }
+                when (k.keyCode) {
+                    KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY, KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                        if (player.isPlaying) player.pause() else player.play(); showControls(); return@onPreviewKeyEvent true
+                    }
+                    KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS -> { showOptions = true; return@onPreviewKeyEvent true }
+                    KeyEvent.KEYCODE_CHANNEL_UP -> { zap(-1); return@onPreviewKeyEvent true }
+                    KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(1); return@onPreviewKeyEvent true }
+                    KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { player.seekForward(); return@onPreviewKeyEvent true }
+                    KeyEvent.KEYCODE_MEDIA_REWIND -> { player.seekBack(); return@onPreviewKeyEvent true }
+                }
+                if (controls || showOptions || showChannels) return@onPreviewKeyEvent false
+                // Controls hidden: remote shortcuts.
+                when (k.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        if (k.repeatCount > 0) showOptions = true else showControls(); true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> { if (current.isLive) zap(-1) else showControls(); true }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> { if (current.isLive) zap(1) else showControls(); true }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> { if (current.isLive && zapList.size > 1) showChannels = true else player.seekBack(); true }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> { if (current.isLive) showControls() else player.seekForward(); true }
+                    else -> false
+                }
+            }
+            .pointerInput(Unit) { detectTapGestures(onTap = { if (controls) controls = false else showControls() }, onDoubleTap = { activity?.enterPip() }) },
     ) {
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
                     this.player = player
-                    useController = true
-                    controllerShowTimeoutMs = 4000
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    setShowSubtitleButton(true)
-                    setShowNextButton(false)
-                    setShowPreviousButton(false)
-                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { v ->
-                        controllerVisible = v == android.view.View.VISIBLE
-                    })
-                    if (request.isLive) {
-                        setShowFastForwardButton(false)
-                        setShowRewindButton(false)
-                    }
+                    useController = false
+                    resizeMode = resizeModes[resizeIdx].first
+                    isFocusable = false
                     keepScreenOn = true
+                    playerView = this
                 }
             },
+            update = { it.resizeMode = if (pip) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeModes[resizeIdx].first },
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (buffering && error == null) {
-            CircularProgressIndicator(color = DS.Accent, modifier = Modifier.align(Alignment.Center))
-        }
+        if (buffering && error == null) CircularProgressIndicator(color = DS.Accent, modifier = Modifier.align(Alignment.Center))
+
+        if (pip) return@Box
 
         error?.let {
             Text(
                 "Playback problem: $it" + if (current.isLive) " · retrying…" else "",
                 color = Color.White,
-                modifier = Modifier.align(Alignment.Center).clip(RoundedCornerShape(8.dp))
+                modifier = Modifier.align(Alignment.Center).padding(top = 80.dp).clip(RoundedCornerShape(10.dp))
                     .background(Color(0xCC000000)).padding(16.dp),
             )
         }
 
-        // On-screen back button (touch screens); shows with the controls or the channel banner.
-        AnimatedVisibility(
-            visible = controllerVisible || bannerVisible,
-            enter = fadeIn(), exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopEnd).padding(16.dp),
-        ) {
-            IconButton(
-                onClick = onExit,
-                modifier = Modifier.clip(androidx.compose.foundation.shape.CircleShape).background(Color(0x99000000)),
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+        // Typed channel number.
+        if (digits.isNotEmpty()) {
+            Text(
+                digits, color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.TopEnd).padding(32.dp).clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xCC000000)).padding(horizontal = 22.dp, vertical = 8.dp),
+            )
+        }
+
+        // ---------- Controls overlay ----------
+        AnimatedVisibility(controls, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize()) {
+                // Top bar
+                Row(
+                    Modifier.align(Alignment.TopStart).fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color(0xE6000000), Color.Transparent)))
+                        .padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CtrlButton(Icons.AutoMirrored.Filled.ArrowBack, "Back") { onExit() }
+                    current.channel?.let { ch -> HSpacer(12.dp); ChannelLogo(ch.icon, 44.dp) }
+                    Column(Modifier.padding(horizontal = 14.dp).weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(current.title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
+                            if (current.isLive) { HSpacer(10.dp); LiveBadge() }
+                        }
+                        val sub = if (current.isLive) nowProg?.let { "${it.title} · ${minutesLeft(it)} left" } else current.subtitle
+                        sub?.let { Text(it, color = DS.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    }
+                    if (sleepAt > 0) {
+                        val mins = ((sleepAt - System.currentTimeMillis()) / 60_000).coerceAtLeast(0) + 1
+                        Text("Sleep in ${mins}m", color = Color.White, fontSize = 12.sp,
+                            modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x55FFFFFF)).padding(horizontal = 10.dp, vertical = 4.dp))
+                        HSpacer(8.dp)
+                    }
+                    CtrlButton(Icons.Default.PictureInPictureAlt, "Picture-in-picture") { activity?.enterPip() }
+                }
+
+                // Bottom bar
+                Column(
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xEE000000))))
+                        .padding(horizontal = 24.dp, vertical = 18.dp),
+                ) {
+                    if (!current.isLive || isLiveWindow) {
+                        SeekBar(
+                            position = position, duration = duration,
+                            onSeek = { player.seekTo(it); touch++ },
+                            onStep = { d -> if (d > 0) player.seekForward() else player.seekBack(); touch++ },
+                        )
+                        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            Text(fmtDuration(position), color = DS.TextDim, fontSize = 12.sp)
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                if (isLiveWindow) (if (behindLive > 15_000) "-" + fmtDuration(behindLive) else "LIVE") else fmtDuration(duration),
+                                color = if (isLiveWindow && behindLive <= 15_000) DS.Live else DS.TextDim, fontSize = 12.sp,
+                            )
+                        }
+                    } else if (nowProg != null) {
+                        // Plain live stream: show programme progress instead of a seek bar.
+                        val f = ((System.currentTimeMillis() - nowProg.startMs).toFloat() / (nowProg.endMs - nowProg.startMs)).coerceIn(0f, 1f)
+                        Box(Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x44FFFFFF))) {
+                            Box(Modifier.fillMaxWidth(f).fillMaxHeight().background(DS.Accent))
+                        }
+                        Row(Modifier.fillMaxWidth().padding(top = 4.dp)) {
+                            Text(fmtTime(nowProg.startMs), color = DS.TextDim, fontSize = 12.sp)
+                            Spacer(Modifier.weight(1f))
+                            nextProg?.let { Text("Next: ${it.title} · ${fmtTime(it.startMs)}", color = DS.TextDim, fontSize = 12.sp, maxLines = 1) }
+                            Spacer(Modifier.weight(1f))
+                            Text(fmtTime(nowProg.endMs), color = DS.TextDim, fontSize = 12.sp)
+                        }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        if (current.isLive && zapList.size > 1) CtrlButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Channels") { showChannels = true }
+                        CtrlButton(Icons.Default.Replay10, "Back 10 seconds") { player.seekBack(); touch++ }
+                        CtrlButton(
+                            if (playing && player.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            if (player.playWhenReady) "Pause" else "Play",
+                            big = true, focus = playFocus,
+                        ) { if (player.playWhenReady) player.pause() else player.play(); playing = player.playWhenReady; touch++ }
+                        CtrlButton(Icons.Default.Forward10, "Forward 10 seconds") { player.seekForward(); touch++ }
+                        if (isLiveWindow && behindLive > 15_000) PillButton(Icons.Default.LiveTv, "Go live") { player.seekToDefaultPosition(); touch++ }
+                        if (canStartOver) PillButton(Icons.Default.History, "Start over") { startOver() }
+                        if (isCatchup) PillButton(Icons.Default.LiveTv, "Back to live") { backToLive() }
+                        Spacer(Modifier.weight(1f))
+                        CtrlButton(Icons.Default.Subtitles, "Audio & subtitles") { showOptions = true }
+                        CtrlButton(Icons.Default.Bedtime, "Sleep timer") { showOptions = true }
+                        CtrlButton(Icons.Default.AspectRatio, "Picture size: ${resizeModes[resizeIdx].second}") {
+                            resizeIdx = (resizeIdx + 1) % resizeModes.size; touch++
+                        }
+                    }
+                }
             }
         }
 
+        // ---------- Channel list ----------
         AnimatedVisibility(
-            visible = bannerVisible && !controllerVisible,
-            enter = fadeIn(), exit = fadeOut(),
-            modifier = Modifier.align(Alignment.TopStart).fillMaxWidth(),
+            showChannels,
+            enter = slideInHorizontally { -it } + fadeIn(),
+            exit = slideOutHorizontally { -it } + fadeOut(),
+            modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight(),
         ) {
-            InfoBanner(current, hasZap = zapList.size > 1)
+            ChannelPanel(zapList, current.channel?.streamId, onPick = { switchTo(it) })
+        }
+
+        if (showOptions) {
+            PlayerOptionsDialog(
+                player = player,
+                sleepAt = sleepAt,
+                programmeEnd = nowProg?.endMs,
+                onSleep = { sleepAt = it },
+                resizeIdx = resizeIdx,
+                onResize = { resizeIdx = it },
+                onDismiss = { showOptions = false; touch++ },
+            )
+        }
+    }
+}
+
+fun minutesLeft(p: Program): String {
+    val m = ((p.endMs - System.currentTimeMillis()) / 60_000).coerceAtLeast(0)
+    return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m"
+}
+
+@Composable
+private fun CtrlButton(icon: ImageVector, label: String, big: Boolean = false, focus: FocusRequester? = null, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val size = if (big) 64.dp else 48.dp
+    Box(
+        Modifier
+            .size(size)
+            .then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
+            .onFocusChanged { focused = it.isFocused }
+            .clip(CircleShape)
+            .background(if (focused) Color.White else if (big) Color(0x33FFFFFF) else Color(0x22FFFFFF))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, label, tint = if (focused) Color.Black else Color.White, modifier = Modifier.size(if (big) 34.dp else 24.dp))
+    }
+}
+
+@Composable
+private fun PillButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    Row(
+        Modifier.height(40.dp).onFocusChanged { focused = it.isFocused }.clip(RoundedCornerShape(20.dp))
+            .background(if (focused) Color.White else Color(0x33FFFFFF)).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = if (focused) Color.Black else Color.White, modifier = Modifier.size(18.dp))
+        Text("  $label", color = if (focused) Color.Black else Color.White, fontSize = 14.sp)
+    }
+}
+
+/** Seek bar that works with touch (tap/drag) and with the remote (left/right when focused). */
+@Composable
+private fun SeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit, onStep: (Int) -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    var widthPx by remember { mutableIntStateOf(1) }
+    val f = if (duration > 0) (position.toFloat() / duration).coerceIn(0f, 1f) else 0f
+    Box(
+        Modifier.fillMaxWidth().height(24.dp)
+            .onSizeChanged { widthPx = it.width.coerceAtLeast(1) }
+            .onFocusChanged { focused = it.isFocused }
+            .onPreviewKeyEvent { ev ->
+                if (ev.nativeKeyEvent.action != KeyEvent.ACTION_DOWN) return@onPreviewKeyEvent false
+                when (ev.nativeKeyEvent.keyCode) {
+                    KeyEvent.KEYCODE_DPAD_LEFT -> { onStep(-1); true }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> { onStep(1); true }
+                    else -> false
+                }
+            }
+            .focusable()
+            .pointerInput(duration) {
+                detectTapGestures { o -> if (duration > 0) onSeek((o.x / widthPx * duration).toLong()) }
+            },
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Box(Modifier.fillMaxWidth().height(if (focused) 6.dp else 4.dp).clip(RoundedCornerShape(3.dp)).background(Color(0x44FFFFFF))) {
+            Box(Modifier.fillMaxWidth(f).fillMaxHeight().background(DS.Accent))
+        }
+        Box(
+            Modifier.fillMaxWidth(f.coerceAtLeast(0.0001f)).height(24.dp),
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            Box(Modifier.size(if (focused) 18.dp else 12.dp).clip(CircleShape).background(if (focused) Color.White else DS.Accent))
         }
     }
 }
 
 @Composable
-private fun InfoBanner(req: PlayRequest, hasZap: Boolean) {
+private fun ChannelPanel(channels: List<Channel>, currentId: Int?, onPick: (Channel) -> Unit) {
     val repo = DekStreamApp.instance.repo
-    val ch = req.channel
-    val epg by produceState<List<Program>>(emptyList(), ch?.streamId) {
-        if (ch != null && repo != null) value = repo.nowNext(ch)
-    }
-    val now = epg.firstOrNull { it.isLive() }
-    val next = epg.firstOrNull { it.startMs > System.currentTimeMillis() }
-    Row(
-        Modifier.fillMaxWidth()
-            .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color(0xE6000000), Color.Transparent)))
-            .padding(24.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val startIdx = channels.indexOfFirst { it.streamId == currentId }.coerceAtLeast(0)
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (startIdx - 3).coerceAtLeast(0))
+    val first = remember { FocusRequester() }
+    LaunchedEffect(Unit) { delay(80); runCatching { first.requestFocus() } }
+    Column(
+        Modifier.fillMaxHeight().widthIn(max = 420.dp).width(380.dp)
+            .background(Brush.horizontalGradient(listOf(Color(0xF20B0D12), Color(0xD90B0D12))))
+            .padding(vertical = 18.dp),
     ) {
-        if (ch != null) ChannelLogo(ch.icon, 56.dp)
-        Column(Modifier.padding(start = 14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(req.title, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                if (req.isLive) { HSpacer(10.dp); LiveBadge() }
+        Text("Channels", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        LazyColumn(state = listState) {
+            itemsIndexed(channels, key = { _, c -> c.streamId }) { i, c ->
+                val now by produceState<Program?>(null, c.streamId) { value = repo?.nowNext(c)?.firstOrNull { it.isLive() } }
+                val selected = c.streamId == currentId
+                val shape = RoundedCornerShape(10.dp)
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)
+                        .then(if (i == startIdx) Modifier.focusRequester(first) else Modifier)
+                        .focusRing(shape, 1.02f).clip(shape)
+                        .background(if (selected) DS.AccentSoft else Color.Transparent)
+                        .clickable { onPick(c) }.padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(if (c.num > 0) "${c.num}" else "", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.width(34.dp))
+                    ChannelLogo(c.icon, 36.dp)
+                    Column(Modifier.padding(start = 10.dp)) {
+                        Text(c.name, color = Color.White, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        now?.let { Text(it.title, color = DS.TextDim, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                    }
+                }
             }
-            req.subtitle?.let { Text(it, color = DS.TextDim, fontSize = 14.sp) }
-            now?.let { Text("Now: ${it.title}  (${fmtTime(it.startMs)} – ${fmtTime(it.endMs)})", color = Color.White, fontSize = 14.sp) }
-            next?.let { Text("Next: ${it.title}  ${fmtTime(it.startMs)}", color = DS.TextDim, fontSize = 13.sp) }
-            if (hasZap && req.isLive) Text("▲ ▼ change channel", color = DS.TextDim, fontSize = 12.sp)
         }
     }
 }
+
+@Suppress("unused") private val noRipple = MutableInteractionSource()
+@Suppress("unused") private val h = Modifier.heightIn(0.dp)

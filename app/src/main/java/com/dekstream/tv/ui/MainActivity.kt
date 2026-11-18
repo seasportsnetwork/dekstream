@@ -1,6 +1,11 @@
 package com.dekstream.tv.ui
 
+import android.app.PictureInPictureParams
+import android.content.pm.PackageManager
+import android.content.res.Configuration
+import android.os.Build
 import android.os.Bundle
+import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -23,6 +28,25 @@ class MainActivity : ComponentActivity() {
                 Box(Modifier.fillMaxSize().background(DS.Bg)) { Root() }
             }
         }
+    }
+
+    /** Pressing Home while watching drops the video into a picture-in-picture window. */
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (DekStreamApp.instance.playerActive) enterPip()
+    }
+
+    fun enterPip() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
+        runCatching {
+            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        DekStreamApp.instance.inPip = isInPictureInPictureMode
     }
 }
 

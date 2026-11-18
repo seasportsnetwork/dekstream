@@ -48,6 +48,11 @@ class DekStreamApp : Application() {
     var pendingProfile by mutableStateOf<Profile?>(null)
         private set
 
+    /** Set while the full-screen player is open (for auto picture-in-picture). */
+    var playerActive by mutableStateOf(false)
+    /** True while the activity is shown as a picture-in-picture window. */
+    var inPip by mutableStateOf(false)
+
     val repo: Repo? get() = session?.repo
     val prefs: Prefs get() = session?.prefs ?: error("No active profile")
 
