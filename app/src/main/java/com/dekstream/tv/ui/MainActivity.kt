@@ -1,6 +1,10 @@
 package com.dekstream.tv.ui
 
+import android.Manifest
 import android.app.PictureInPictureParams
+import android.content.Intent
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Build
@@ -15,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -23,12 +28,31 @@ import com.dekstream.tv.DekStreamApp
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleIntent(intent)
         setContent {
             DekStreamTheme {
                 Box(Modifier.fillMaxSize().background(DS.Bg)) { Root() }
             }
         }
     }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(i: Intent?) {
+        val id = i?.getIntExtra(EXTRA_PLAY_STREAM, -1) ?: -1
+        if (id >= 0) DekStreamApp.instance.pendingPlayStream = id
+    }
+
+    fun askNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7)
+    }
+
+    companion object { const val EXTRA_PLAY_STREAM = "play_stream" }
 
     /** Pressing Home while watching drops the video into a picture-in-picture window. */
     override fun onUserLeaveHint() {
@@ -67,8 +91,21 @@ private fun Root() {
 
 @Composable
 private fun SignedIn() {
+    val app = DekStreamApp.instance
     val state = remember { AppState() }
     val top = state.stack.lastOrNull()
+
+    // Open a channel from a reminder notification.
+    val pending = app.pendingPlayStream
+    LaunchedEffect(pending) {
+        val id = pending ?: return@LaunchedEffect
+        app.pendingPlayStream = null
+        val repo = app.repo ?: return@LaunchedEffect
+        runCatching { repo.allChannels().firstOrNull { it.streamId == id } }.getOrNull()?.let {
+            app.prefs.markChannelWatched(it.streamId)
+            state.play(repo.liveRequest(it))
+        }
+    }
 
     BackHandler(enabled = top != null || state.tab != Tab.Home) {
         if (!state.pop()) state.tab = Tab.Home

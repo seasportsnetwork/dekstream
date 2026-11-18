@@ -37,6 +37,11 @@ class DekStreamApp : Application() {
         private set
     lateinit var epg: EpgIndex
         private set
+    lateinit var reminders: com.dekstream.tv.data.Reminders
+        private set
+
+    /** Channel to open once signed in (from a reminder notification). */
+    var pendingPlayStream by mutableStateOf<Int?>(null)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -67,6 +72,8 @@ class DekStreamApp : Application() {
         store = Store(this)
         sports = SportsRepo(http)
         epg = EpgIndex(http)
+        reminders = com.dekstream.tv.data.Reminders(this)
+        com.dekstream.tv.data.Reminders.ensureChannel(this)
         // Go straight in when there's only one profile.
         store.profiles.value.singleOrNull()?.let { start(it) }
     }

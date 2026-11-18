@@ -78,7 +78,8 @@ private fun choices(tracks: Tracks, type: Int): List<TrackChoice> {
 }
 
 /** Audio track, subtitles, sleep timer and picture size. */
-@OptIn(UnstableApi::class, ExperimentalLayoutApi::class)
+@OptIn(UnstableApi::class)
+@kotlin.OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PlayerOptionsDialog(
     player: ExoPlayer,
