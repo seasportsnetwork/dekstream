@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -138,6 +139,8 @@ fun GuideScreen(state: AppState) {
         }
     }
 
+    val allReminders by app.reminders.items.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
     picked?.let { (c, p) ->
         val now = System.currentTimeMillis()
         val canCatchUp = c.hasArchive && p.endMs <= now
@@ -147,7 +150,8 @@ fun GuideScreen(state: AppState) {
             title = { Text(p.title, color = DS.Text) },
             text = {
                 Column {
-                    Text("${c.name} · ${fmtTime(p.startMs)} – ${fmtTime(p.endMs)}", color = DS.TextDim, fontSize = 13.sp)
+                    Text("${c.name} · ${fmtTime(p.startMs)} – ${fmtTime(p.endMs)}" + if (p.isLive(now)) " · ${minutesLeft(p)} left" else "",
+                        color = DS.TextDim, fontSize = 13.sp)
                     if (p.description.isNotBlank()) Text(p.description, color = DS.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 8.dp))
                     if (p.endMs <= now && !c.hasArchive) Text("This channel doesn't offer catch-up.", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
                 }
@@ -163,6 +167,17 @@ fun GuideScreen(state: AppState) {
                         picked = null
                         repo.catchupRequest(c, p)?.let { state.play(it) }
                     }) { Text("Watch from start", color = DS.Accent) }
+                    p.startMs > now -> {
+                        val on = allReminders.any { it.streamId == c.streamId && it.startMs == p.startMs }
+                        TextButton(onClick = {
+                            if (on) app.reminders.cancel(c.streamId, p.startMs)
+                            else {
+                                app.reminders.add(app.session?.profile?.id ?: "", c, p)
+                                (context as? MainActivity)?.askNotificationPermission()
+                            }
+                            picked = null
+                        }) { Text(if (on) "Cancel reminder" else "Remind me", color = DS.Accent) }
+                    }
                     else -> {}
                 }
             },
@@ -189,6 +204,7 @@ private fun GuideRow(
     }
     val density = LocalDensity.current
     val now = System.currentTimeMillis()
+    val reminders by DekStreamApp.instance.reminders.items.collectAsState()
     Row(Modifier.fillMaxWidth().height(ROW_H).padding(vertical = 2.dp)) {
         // Channel cell
         val shape = RoundedCornerShape(8.dp)
@@ -213,7 +229,7 @@ private fun GuideRow(
                 Text("No guide information", color = DS.TextDim, fontSize = 12.sp,
                     modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp))
             } else {
-                list.forEach { p ->
+                fillGaps(list, windowStart, windowEnd).forEach { (p, isGap) ->
                     val start = maxOf(p.startMs, windowStart)
                     val end = minOf(p.endMs, windowEnd)
                     val x = ((start - windowStart) / 60000f) * pxPerMin
@@ -239,18 +255,22 @@ private fun GuideRow(
                             .clip(shape2)
                             .background(
                                 when {
+                                    isGap -> DS.Surface.copy(alpha = 0.3f)
                                     live -> DS.AccentSoft
                                     past -> DS.Surface.copy(alpha = 0.55f)
                                     else -> DS.Surface
                                 }
                             )
-                            .clickable { onProgram(p) }
+                            .clickable { if (isGap) onChannel() else onProgram(p) }
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                     ) {
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (past && c.hasArchive) {
+                                if (past && c.hasArchive && !isGap) {
                                     Icon(Icons.Default.History, null, tint = DS.TextDim, modifier = Modifier.width(14.dp).padding(end = 2.dp))
+                                }
+                                if (!isGap && reminders.any { it.streamId == c.streamId && it.startMs == p.startMs }) {
+                                    Icon(Icons.Default.NotificationsActive, "Reminder set", tint = DS.Accent, modifier = Modifier.width(16.dp).padding(end = 3.dp))
                                 }
                                 Text(
                                     p.title, color = if (past) DS.TextDim else DS.Text, fontSize = 13.sp,
@@ -258,11 +278,26 @@ private fun GuideRow(
                                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Text("${fmtTime(p.startMs)} – ${fmtTime(p.endMs)}", color = DS.TextDim, fontSize = 11.sp, maxLines = 1)
+                            if (!isGap) Text(
+                                if (live) "${minutesLeft(p)} left · ends ${fmtTime(p.endMs)}" else "${fmtTime(p.startMs)} – ${fmtTime(p.endMs)}",
+                                color = if (live) DS.Text.copy(alpha = 0.8f) else DS.TextDim, fontSize = 11.sp, maxLines = 1,
+                            )
                         }
                     }
                 }
             }
         }
     }
+}
+
+/** Pads the guide row so gaps (and missing ends) show as "No information" blocks instead of empty space. */
+private fun fillGaps(list: List<Program>, from: Long, to: Long): List<Pair<Program, Boolean>> {
+    val out = ArrayList<Pair<Program, Boolean>>()
+    var cursor = from
+    for (p in list.sortedBy { it.startMs }) {
+        if (p.startMs - cursor >= 5 * 60_000) out += Program("No information", "", cursor, p.startMs, false) to true
+        if (p.endMs > cursor) { out += p to false; cursor = maxOf(cursor, p.endMs) }
+    }
+    if (to - cursor >= 5 * 60_000) out += Program("No information", "", cursor, to, false) to true
+    return out
 }
