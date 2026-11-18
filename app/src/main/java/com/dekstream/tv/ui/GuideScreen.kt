@@ -89,7 +89,7 @@ fun GuideScreen(state: AppState) {
 
     LoadView(cats) { catList ->
         val catId = selected ?: if (favs.isNotEmpty()) FAV_ID else catList.getOrNull(2)?.id ?: ALL_ID
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().background(Appearance.guideBrush)) {
             LazyRow(contentPadding = PaddingValues(12.dp), horizontalArrangement = rowSpacing) {
                 items(catList, key = { it.id }) { c -> CategoryChip(c.name, c.id == catId) { selected = c.id } }
             }

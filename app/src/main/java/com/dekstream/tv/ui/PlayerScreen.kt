@@ -247,6 +247,11 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     LaunchedEffect(current.progressKey) { while (current.progressKey != null) { delay(10_000); saveProgress() } }
     DisposableEffect(Unit) { onDispose { saveProgress(); player.release() } }
 
+    // Count viewing time (for the profile's weekly totals and kids limits).
+    LaunchedEffect(player) {
+        while (true) { delay(60_000); if (player.isPlaying) app.session?.settings?.addWatchMinute() }
+    }
+
     // Auto-hide controls 5 s after the last interaction.
     LaunchedEffect(touch, controls, showOptions, showChannels) {
         if (controls && !showOptions && !showChannels) { delay(5_000); controls = false }

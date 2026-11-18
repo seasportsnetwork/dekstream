@@ -9,6 +9,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.dekstream.tv.data.EpgIndex
 import com.dekstream.tv.data.Prefs
+import com.dekstream.tv.data.ProfileSettings
+import com.dekstream.tv.ui.Appearance
 import com.dekstream.tv.data.Profile
 import com.dekstream.tv.data.Provider
 import com.dekstream.tv.data.Repo
@@ -23,7 +25,7 @@ import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
 /** Who is watching and from which playlist. */
-class Session(val profile: Profile, val source: Source, val prefs: Prefs, val repo: Repo) {
+class Session(val profile: Profile, val source: Source, val prefs: Prefs, val repo: Repo, val settings: ProfileSettings) {
     val key get() = profile.id + ":" + source.id
 }
 
@@ -83,15 +85,25 @@ class DekStreamApp : Application() {
     /** Opens a profile with its playlist (or asks for one if it has none). */
     fun start(p: Profile) {
         store.lastProfileId = p.id
-        val src = store.source(p.sourceId) ?: store.sources.value.firstOrNull()
+        applyAppearance(ProfileSettings(this, p.id))
+        val visible = store.sources.value.filter { p.canSee(it.id) }
+        val src = store.source(p.sourceId)?.takeIf { p.canSee(it.id) } ?: visible.firstOrNull()
         if (src == null) { session = null; pendingProfile = p; return }
         val profile = if (p.sourceId != src.id) p.copy(sourceId = src.id).also { store.saveProfile(it) } else p
         val prefs = Prefs(this, profile.id, src.id)
         val provider = provider(src)
         pendingProfile = null
-        session = Session(profile, src, prefs, Repo(provider, prefs, epg))
+        session = Session(profile, src, prefs, Repo(provider, prefs, epg), ProfileSettings(this, profile.id))
         // Xtream catch-up needs the panel's timezone.
         scope.launch { runCatching { provider.verify()?.timezone?.let { prefs.serverTimezone = it } } }
+    }
+
+    fun applyAppearance(s: ProfileSettings) {
+        Appearance.accentIdx = s.accentIdx
+        Appearance.paletteIdx = s.paletteIdx
+        Appearance.selectionIdx = s.selectionIdx
+        Appearance.guideBgIdx = s.guideBgIdx
+        Appearance.panelAlpha = s.panelAlpha
     }
 
     /** Switch the current profile to another playlist. */

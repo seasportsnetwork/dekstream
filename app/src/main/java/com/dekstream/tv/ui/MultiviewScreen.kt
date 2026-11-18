@@ -82,6 +82,7 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), onExit: (() -> Unit)? 
     val all by rememberLoad(Unit) { repo.allChannels() }
 
     if (onExit != null) BackHandler { onExit() }
+    LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); if (slots.any { it != null }) app.session?.settings?.addWatchMinute() } }
 
     fun tileClick(i: Int) {
         val from = swapFrom

@@ -65,7 +65,7 @@ private fun TabContent(state: AppState) {
         Tab.Multiview -> MultiviewScreen()
         Tab.Search -> SearchScreen(state)
         Tab.Profile -> ProfileScreen(state)
-        Tab.Settings -> SettingsScreen()
+        Tab.Settings -> SettingsScreen(state)
     }
 }
 
