@@ -93,11 +93,11 @@ import java.util.Locale
 @Composable
 fun BrandMark(size: Dp = 40.dp, showName: Boolean = true, nameSize: Int = 24) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Image(painterResource(R.drawable.logo_mark), contentDescription = "DekStream", modifier = Modifier.size(size))
+        Image(painterResource(R.drawable.logo_mark), contentDescription = "DekTV", modifier = Modifier.size(size))
         if (showName) {
             Spacer(Modifier.width(10.dp))
             Text("Dek", color = DS.Text, fontSize = nameSize.sp, fontWeight = FontWeight.Bold)
-            Text("Stream", color = DS.Accent, fontSize = nameSize.sp, fontWeight = FontWeight.Bold)
+            Text("TV", color = DS.Accent, fontSize = nameSize.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
