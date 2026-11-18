@@ -91,7 +91,7 @@ fun MultiviewScreen() {
     }
 }
 
-@OptIn(UnstableApi::class, ExperimentalFoundationApi::class)
+@kotlin.OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MultiTile(
     channel: Channel?,
