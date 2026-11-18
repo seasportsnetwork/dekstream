@@ -9,12 +9,24 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
-data class TeamSide(val name: String, val nickname: String, val abbr: String, val logo: String?, val score: String?)
+data class League(val key: String, val name: String, val short: String, val path: String)
+
+data class TeamSide(
+    val id: String,
+    val name: String,
+    val nickname: String,
+    val location: String,
+    val abbr: String,
+    val logo: String?,
+    val score: String?,
+    val record: String?,
+)
 
 data class Game(
     val id: String,
-    val league: String,
+    val league: League,
     val startMs: Long,
     /** "pre", "in" or "post" */
     val state: String,
@@ -22,70 +34,105 @@ data class Game(
     val home: TeamSide,
     val away: TeamSide,
     val broadcasts: List<String>,
+    val venue: String?,
 ) {
     val isLive get() = state == "in"
-    fun involves(abbr: String) = home.abbr.equals(abbr, true) || away.abbr.equals(abbr, true)
 }
 
-data class MyTeam(val league: String, val sportPath: String, val abbr: String, val label: String)
+data class FavTeam(val leagueKey: String, val teamId: String, val name: String, val abbr: String, val logo: String?) {
+    val key get() = "$leagueKey|$teamId"
+}
 
-/** Uses ESPN's public scoreboard JSON (no key needed). */
+data class TeamInfo(val id: String, val name: String, val abbr: String, val logo: String?)
+
+/** A channel offered for a game, with what its guide says is on. */
+data class ChannelMatch(val channel: Channel, val programme: EpgIndex.Entry?, val confirmed: Boolean, val score: Int)
+
+/** ESPN's public scoreboard JSON (no key needed). */
 class SportsRepo(private val http: OkHttpClient) {
 
-    val myTeams = listOf(
-        MyTeam("NFL", "football/nfl", "SEA", "Seahawks"),
-        MyTeam("NBA", "basketball/nba", "LAL", "Lakers"),
-        MyTeam("MLB", "baseball/mlb", "SEA", "Mariners"),
+    val allLeagues = listOf(
+        League("nfl", "NFL", "NFL", "football/nfl"),
+        League("nba", "NBA", "NBA", "basketball/nba"),
+        League("mlb", "MLB", "MLB", "baseball/mlb"),
+        League("nhl", "NHL", "NHL", "hockey/nhl"),
+        League("wnba", "WNBA", "WNBA", "basketball/wnba"),
+        League("cfb", "College Football", "NCAAF", "football/college-football"),
+        League("cbb", "College Basketball", "NCAAM", "basketball/mens-college-basketball"),
+        League("mls", "MLS", "MLS", "soccer/usa.1"),
+        League("epl", "Premier League", "EPL", "soccer/eng.1"),
+        League("ucl", "Champions League", "UCL", "soccer/uefa.champions"),
+        League("laliga", "La Liga", "LaLiga", "soccer/esp.1"),
+        League("seriea", "Serie A", "Serie A", "soccer/ita.1"),
+        League("bund", "Bundesliga", "Bundesliga", "soccer/ger.1"),
+        League("ligamx", "Liga MX", "Liga MX", "soccer/mex.1"),
     )
 
-    val leagues = listOf(
-        "NFL" to "football/nfl",
-        "NBA" to "basketball/nba",
-        "MLB" to "baseball/mlb",
-        "NHL" to "hockey/nhl",
-        "College Football" to "football/college-football",
-        "College Basketball" to "basketball/mens-college-basketball",
-    )
+    fun league(key: String) = allLeagues.firstOrNull { it.key == key }
+
+    private val teamsCache = ConcurrentHashMap<String, List<TeamInfo>>()
 
     private suspend fun get(url: String): JSONObject = withContext(Dispatchers.IO) {
         val req = Request.Builder().url(url).header("User-Agent", XtreamApi.USER_AGENT).build()
-        http.newCall(req).execute().use { r ->
-            parseObject(r.body?.string() ?: "")
-        }
+        http.newCall(req).execute().use { r -> parseObject(r.body?.string() ?: "") }
     }
 
-    /** Today's scoreboard for one league. */
-    suspend fun scoreboard(league: String, path: String): List<Game> {
-        val o = runCatching { get("https://site.api.espn.com/apis/site/v2/sports/$path/scoreboard") }.getOrNull()
-            ?: return emptyList()
-        val events = o.optJSONArray("events") ?: return emptyList()
+    private fun base(l: League) = "https://site.api.espn.com/apis/site/v2/sports/${l.path}"
+
+    /** Today's games for one league, live first. */
+    suspend fun scoreboard(l: League): List<Game> {
+        val o = runCatching { get("${base(l)}/scoreboard") }.getOrNull() ?: return emptyList()
         val out = ArrayList<Game>()
-        events.objects { e -> parseEvent(e, league)?.let { out += it } }
+        o.optJSONArray("events")?.objects { e -> parseEvent(e, l)?.let { out += it } }
         return out.sortedWith(compareBy<Game>({ stateOrder(it.state) }, { it.startMs }))
     }
 
-    /** Live / next / last game for each of my teams. */
-    suspend fun myTeamGames(): List<Pair<MyTeam, Game>> = coroutineScope {
-        myTeams.map { t ->
+    /** All teams in a league (for picking favorites). */
+    suspend fun teams(l: League): List<TeamInfo> {
+        teamsCache[l.key]?.let { return it }
+        val o = get("${base(l)}/teams?limit=500")
+        val out = ArrayList<TeamInfo>()
+        o.optJSONArray("sports")?.optJSONObject(0)?.optJSONArray("leagues")?.optJSONObject(0)
+            ?.optJSONArray("teams")?.objects { w ->
+                val t = w.optJSONObject("team") ?: return@objects
+                out += TeamInfo(
+                    id = t.s("id") ?: return@objects,
+                    name = t.s("displayName") ?: "?",
+                    abbr = t.s("abbreviation") ?: "",
+                    logo = t.optJSONArray("logos")?.optJSONObject(0)?.s("href"),
+                )
+            }
+        val sorted = out.sortedBy { it.name }
+        teamsCache[l.key] = sorted
+        return sorted
+    }
+
+    /** Live, next and last game for each favorite team. */
+    suspend fun favoriteGames(favs: List<FavTeam>): List<Pair<FavTeam, Game>> = coroutineScope {
+        favs.map { t ->
             async {
-                val o = runCatching {
-                    get("https://site.api.espn.com/apis/site/v2/sports/${t.sportPath}/teams/${t.abbr.lowercase()}/schedule")
-                }.getOrNull() ?: return@async emptyList<Pair<MyTeam, Game>>()
-                val events = o.optJSONArray("events") ?: return@async emptyList()
+                val l = league(t.leagueKey) ?: return@async emptyList<Pair<FavTeam, Game>>()
+                val o = runCatching { get("${base(l)}/teams/${t.teamId}/schedule") }.getOrNull()
+                    ?: return@async emptyList()
                 val games = ArrayList<Game>()
-                events.objects { e -> parseEvent(e, t.league)?.let { games += it } }
+                o.optJSONArray("events")?.objects { e -> parseEvent(e, l)?.let { games += it } }
                 val now = System.currentTimeMillis()
                 val live = games.filter { it.isLive }
                 val next = games.filter { it.state == "pre" && it.startMs > now - 3 * 3600_000 }.minByOrNull { it.startMs }
                 val last = games.filter { it.state == "post" }.maxByOrNull { it.startMs }
-                (live + listOfNotNull(next, last)).distinctBy { it.id }.map { t to it }
+                val pick = if (live.isNotEmpty()) live else listOfNotNull(next ?: last)
+                pick.map { t to it }
             }
-        }.awaitAll().flatten()
+        }.awaitAll().flatten().sortedWith(compareBy({ stateOrder(it.second.state) }, { it.second.startMs }))
     }
+
+    /** Fresh copy of one game (for live score updates on the detail screen). */
+    suspend fun refresh(g: Game): Game =
+        scoreboard(g.league).firstOrNull { it.id == g.id } ?: g
 
     private fun stateOrder(s: String) = when (s) { "in" -> 0; "pre" -> 1; else -> 2 }
 
-    private fun parseEvent(e: JSONObject, league: String): Game? {
+    private fun parseEvent(e: JSONObject, league: League): Game? {
         val comp = e.optJSONArray("competitions")?.optJSONObject(0) ?: return null
         val competitors = comp.optJSONArray("competitors") ?: return null
         var home: TeamSide? = null
@@ -93,14 +140,18 @@ class SportsRepo(private val http: OkHttpClient) {
         competitors.objects { c ->
             val team = c.optJSONObject("team") ?: return@objects
             val logo = team.s("logo") ?: team.optJSONArray("logos")?.optJSONObject(0)?.s("href")
-            // scoreboard: "score":"21"; schedule: "score":{"displayValue":"21"}
             val score = c.optJSONObject("score")?.s("displayValue") ?: c.s("score")
+            val record = c.optJSONArray("records")?.optJSONObject(0)?.s("summary")
+                ?: c.optJSONArray("record")?.optJSONObject(0)?.s("displayValue")
             val side = TeamSide(
+                id = team.s("id") ?: "",
                 name = team.s("displayName") ?: team.s("name") ?: "?",
-                nickname = team.s("shortDisplayName") ?: team.s("name") ?: "",
+                nickname = team.s("name") ?: team.s("shortDisplayName") ?: "",
+                location = team.s("location") ?: "",
                 abbr = team.s("abbreviation") ?: "",
                 logo = logo,
                 score = score,
+                record = record,
             )
             if (c.s("homeAway") == "home") home = side else away = side
         }
@@ -111,59 +162,98 @@ class SportsRepo(private val http: OkHttpClient) {
         val detail = status?.s("shortDetail") ?: status?.s("detail") ?: ""
         val start = runCatching { Instant.parse(normaliseDate(e.s("date") ?: comp.s("date") ?: "")).toEpochMilli() }
             .getOrDefault(0L)
-
         val nets = LinkedHashSet<String>()
         comp.optJSONArray("broadcasts")?.objects { b ->
             b.optJSONObject("media")?.s("shortName")?.let { nets += it }
             b.optJSONArray("names")?.let { arr -> for (i in 0 until arr.length()) arr.optString(i).takeIf { it.isNotBlank() }?.let { nets += it } }
         }
-        comp.optJSONArray("geoBroadcasts")?.objects { b ->
-            b.optJSONObject("media")?.s("shortName")?.let { nets += it }
-        }
-        return Game(e.s("id") ?: "${h.abbr}-${a.abbr}-$start", league, start, state, detail, h, a, nets.toList())
+        comp.optJSONArray("geoBroadcasts")?.objects { b -> b.optJSONObject("media")?.s("shortName")?.let { nets += it } }
+        val venue = comp.optJSONObject("venue")?.s("fullName")
+        return Game(e.s("id") ?: "${h.abbr}-${a.abbr}-$start", league, start, state, detail, h, a, nets.toList(), venue)
     }
 
-    /** ESPN sometimes omits seconds: "2026-11-18T01:15Z". */
     private fun normaliseDate(d: String): String =
         if (Regex("T\\d{2}:\\d{2}Z$").containsMatchIn(d)) d.replace("Z", ":00Z") else d
 
     companion object {
-        /** Ranks live channels that probably carry this game: team-named channels first, then networks. */
-        fun matchChannels(game: Game, channels: List<Channel>): List<Channel> {
-            fun norm(s: String) = s.lowercase().replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim()
-            val teamWords = listOf(game.home.nickname, game.away.nickname, game.home.name, game.away.name)
-                .map { norm(it) }.filter { it.length >= 3 }.distinct()
-            val netWords = game.broadcasts.flatMap { networkAliases(it) }.map { norm(it) }.distinct()
+        private fun norm(s: String) =
+            " " + s.lowercase().replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim() + " "
 
-            val scored = channels.mapNotNull { c ->
-                val n = " ${norm(c.name)} "
-                var score = 0
-                if (teamWords.any { n.contains(" $it ") }) score += 100
-                if (netWords.any { n.contains(" $it ") }) score += 50
-                if (score == 0) return@mapNotNull null
-                if (Regex("\\b(us|usa)\\b").containsMatchIn(n)) score += 10
-                if (n.contains(" hd ") || n.contains(" fhd ") || n.contains(" 4k ")) score += 3
-                c to score
+        private fun words(t: TeamSide): List<String> =
+            listOf(t.nickname, t.name).map { norm(it).trim() }.filter { it.length >= 3 }.distinct()
+
+        /**
+         * Channels for a game. "Confirmed" = the provider's guide shows the game on that channel
+         * around game time. Name-only guesses (team or network in the channel name) come after.
+         */
+        fun matchChannels(game: Game, channels: List<Channel>, epg: EpgIndex?): List<ChannelMatch> {
+            val at = when {
+                game.isLive -> System.currentTimeMillis()
+                game.startMs > 0 -> game.startMs + 15 * 60_000
+                else -> System.currentTimeMillis()
             }
-            return scored.sortedByDescending { it.second }.map { it.first }.take(40)
+            val homeW = words(game.home)
+            val awayW = words(game.away)
+            val leagueW = listOf(game.league.short, game.league.name).map { norm(it).trim() }
+            val netW = game.broadcasts.flatMap { networkAliases(it) }.map { norm(it).trim() }.distinct()
+
+            val out = ArrayList<ChannelMatch>()
+            for (c in channels) {
+                val prog = epg?.nowOn(c.epgChannelId, at)
+                var score = 0
+                var confirmed = false
+                if (prog != null) {
+                    val text = norm(prog.title + " " + prog.desc)
+                    val h = homeW.any { text.contains(" $it ") }
+                    val a = awayW.any { text.contains(" $it ") }
+                    if (h && a) { score = 200; confirmed = true }
+                    else if ((h || a) && leagueW.any { text.contains(" $it ") }) { score = 150; confirmed = true }
+                }
+                if (!confirmed) {
+                    val n = norm(c.name)
+                    if ((homeW + awayW).any { n.contains(" $it ") }) score = 60
+                    else if (netW.any { n.contains(" $it ") }) score = 40
+                }
+                if (score == 0) continue
+                val n = norm(c.name)
+                if (Regex(" (us|usa) ").containsMatchIn(n)) score += 8
+                if (Regex(" (4k|uhd) ").containsMatchIn(n)) score += 5
+                else if (Regex(" (fhd|1080p?) ").containsMatchIn(n)) score += 4
+                else if (Regex(" hd ").containsMatchIn(n)) score += 2
+                out += ChannelMatch(c, prog, confirmed, score)
+            }
+            return out.sortedByDescending { it.score }.take(60)
+        }
+
+        /** Quality labels pulled from a channel name, e.g. "FHD", "60 fps". */
+        fun qualityTags(name: String): List<String> {
+            val n = norm(name)
+            val tags = ArrayList<String>()
+            when {
+                Regex(" (4k|uhd) ").containsMatchIn(n) -> tags += "4K"
+                Regex(" (fhd|1080p?) ").containsMatchIn(n) -> tags += "FHD"
+                Regex(" (hd|720p?) ").containsMatchIn(n) -> tags += "HD"
+                Regex(" sd ").containsMatchIn(n) -> tags += "SD"
+            }
+            Regex(" (50|60) ?fps ").find(n)?.let { tags += "${it.groupValues[1]} fps" }
+            return tags
         }
 
         private fun networkAliases(n: String): List<String> {
             val l = n.lowercase()
             return when {
-                l.contains("prime") -> listOf("prime video", "amazon prime", "tnf", "thursday night football")
+                l.contains("prime") -> listOf("prime video", "amazon prime", "tnf")
                 l.contains("peacock") -> listOf("peacock")
                 l.contains("netflix") -> listOf("netflix")
-                l.contains("espn+") -> listOf("espn plus", "espn+")
+                l.contains("espn+") -> listOf("espn plus")
                 l.contains("nfl net") -> listOf("nfl network")
                 l.contains("nba tv") -> listOf("nba tv")
                 l.contains("mlb net") -> listOf("mlb network")
+                l.contains("fs1") -> listOf("fs1", "fox sports 1")
                 l.contains("tnt") -> listOf("tnt")
                 l.contains("abc") -> listOf("abc")
                 l.contains("cbs") -> listOf("cbs")
                 l.contains("nbc") -> listOf("nbc")
-                l.contains("fox") && l.contains("fs1") -> listOf("fs1")
-                l.contains("fs1") -> listOf("fs1", "fox sports 1")
                 l.contains("fox") -> listOf("fox")
                 else -> listOf(n)
             }

@@ -3,6 +3,7 @@ package com.dekstream.tv.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -36,7 +37,8 @@ fun HomeScreen(state: AppState) {
     val favIds by app.prefs.favorites.collectAsState()
     val recentIds by app.prefs.recentChannels.collectAsState()
     val all by rememberLoad(Unit) { repo.allChannels() }
-    val sports by rememberLoad(Unit) { app.sports.myTeamGames() }
+    val favTeams by app.prefs.favTeams.collectAsState()
+    val sports by rememberLoad(favTeams) { app.sports.favoriteGames(favTeams) }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp)) {
         item {
@@ -69,8 +71,10 @@ fun HomeScreen(state: AppState) {
             item { SectionTitle("My Teams") }
             item {
                 LazyRow(horizontalArrangement = rowSpacing) {
-                    items(games, key = { it.second.id }) { (_, g) ->
-                        GameCard(g, width = 280.dp, onClick = { state.tab = Tab.Sports })
+                    items(games, key = { it.first.key + it.second.id }) { (_, g) ->
+                        Box(Modifier.width(340.dp)) {
+                            GameRow(g, favorite = true, onClick = { state.push(Route.GameDetail(g)) }, onLongClick = {})
+                        }
                     }
                 }
             }

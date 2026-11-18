@@ -35,6 +35,54 @@ class Prefs(context: Context) {
         get() = sp.getString("liveFormat", "ts") ?: "ts"
         set(v) = sp.edit().putString("liveFormat", v).apply()
 
+    // --- Sports ---
+    private val _sportLeagues = MutableStateFlow(
+        (sp.getString("sportLeagues", null) ?: "nfl,nba,mlb,nhl,cfb").split(',').filter { it.isNotBlank() }
+    )
+    /** League keys shown on the Sports tab, in display order. */
+    val sportLeagues: StateFlow<List<String>> = _sportLeagues
+
+    fun toggleLeague(key: String) {
+        val l = _sportLeagues.value.toMutableList()
+        if (!l.remove(key)) l.add(key)
+        _sportLeagues.value = l
+        sp.edit().putString("sportLeagues", l.joinToString(",")).apply()
+    }
+
+    private val _favTeams = MutableStateFlow(loadFavTeams())
+    val favTeams: StateFlow<List<FavTeam>> = _favTeams
+
+    fun isFavTeam(leagueKey: String, teamId: String) = _favTeams.value.any { it.leagueKey == leagueKey && it.teamId == teamId }
+
+    fun toggleFavTeam(t: FavTeam) {
+        val l = _favTeams.value.toMutableList()
+        if (!l.removeAll { it.key == t.key }) l.add(t)
+        _favTeams.value = l
+        val arr = JSONArray()
+        l.forEach { f ->
+            arr.put(JSONObject().apply {
+                put("l", f.leagueKey); put("id", f.teamId); put("n", f.name); put("a", f.abbr); put("logo", f.logo ?: "")
+            })
+        }
+        sp.edit().putString("favTeams", arr.toString()).apply()
+    }
+
+    private fun loadFavTeams(): List<FavTeam> {
+        val raw = sp.getString("favTeams", null)
+            ?: return listOf(
+                FavTeam("nfl", "26", "Seattle Seahawks", "SEA", "https://a.espncdn.com/i/teamlogos/nfl/500/sea.png"),
+                FavTeam("nba", "13", "Los Angeles Lakers", "LAL", "https://a.espncdn.com/i/teamlogos/nba/500/lal.png"),
+                FavTeam("mlb", "12", "Seattle Mariners", "SEA", "https://a.espncdn.com/i/teamlogos/mlb/500/sea.png"),
+            )
+        return runCatching {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                FavTeam(o.getString("l"), o.getString("id"), o.optString("n"), o.optString("a"), o.optString("logo").ifBlank { null })
+            }
+        }.getOrDefault(emptyList())
+    }
+
     // --- Favourite channels ---
     private val _favorites = MutableStateFlow(loadIntSet("favs"))
     val favorites: StateFlow<Set<Int>> = _favorites
@@ -127,5 +175,6 @@ class Prefs(context: Context) {
     fun clearAll() {
         sp.edit().clear().apply()
         _favorites.value = emptySet(); _recent.value = emptyList(); _progress.value = emptyMap()
+        _favTeams.value = loadFavTeams(); _sportLeagues.value = listOf("nfl", "nba", "mlb", "nhl", "cfb")
     }
 }

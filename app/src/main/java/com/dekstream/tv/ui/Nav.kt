@@ -17,6 +17,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.dekstream.tv.data.Category
 import com.dekstream.tv.data.Channel
+import com.dekstream.tv.data.Game
 import com.dekstream.tv.data.PlayRequest
 import com.dekstream.tv.data.Series
 import com.dekstream.tv.data.Vod
@@ -37,6 +38,8 @@ sealed interface Route {
     data class MovieDetail(val vod: Vod) : Route
     data class SeriesDetail(val series: Series) : Route
     data class VodCategory(val category: Category, val isSeries: Boolean) : Route
+    data class GameDetail(val game: Game) : Route
+    data object SportsSettings : Route
     data class Player(val request: PlayRequest, val zapList: List<Channel> = emptyList()) : Route
 }
 
