@@ -11,7 +11,7 @@ import org.json.JSONObject
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 
-data class League(val key: String, val name: String, val short: String, val path: String)
+data class League(val key: String, val name: String, val short: String, val path: String, val racing: Boolean = false)
 
 data class TeamSide(
     val id: String,
@@ -22,6 +22,8 @@ data class TeamSide(
     val logo: String?,
     val score: String?,
     val record: String?,
+    /** Points per period (quarters, innings...), when the scoreboard has them. */
+    val linescores: List<String> = emptyList(),
 )
 
 data class Game(
@@ -35,6 +37,11 @@ data class Game(
     val away: TeamSide,
     val broadcasts: List<String>,
     val venue: String?,
+    /** Football: down & distance text, who has the ball, red zone. */
+    val situation: String? = null,
+    val possessionId: String? = null,
+    val redZone: Boolean = false,
+    val lastPlay: String? = null,
 ) {
     val isLive get() = state == "in"
 }
@@ -66,6 +73,7 @@ class SportsRepo(private val http: OkHttpClient) {
         League("seriea", "Serie A", "Serie A", "soccer/ita.1"),
         League("bund", "Bundesliga", "Bundesliga", "soccer/ger.1"),
         League("ligamx", "Liga MX", "Liga MX", "soccer/mex.1"),
+        League("f1", "Formula 1", "F1", "racing/f1", racing = true),
     )
 
     fun league(key: String) = allLeagues.firstOrNull { it.key == key }
@@ -80,8 +88,10 @@ class SportsRepo(private val http: OkHttpClient) {
     private fun base(l: League) = "https://site.api.espn.com/apis/site/v2/sports/${l.path}"
 
     /** Today's games for one league, live first. */
-    suspend fun scoreboard(l: League): List<Game> {
-        val o = runCatching { get("${base(l)}/scoreboard") }.getOrNull() ?: return emptyList()
+    suspend fun scoreboard(l: League, date: String? = null): List<Game> {
+        if (l.racing) return emptyList()
+        val url = "${base(l)}/scoreboard" + (date?.let { "?dates=$it" } ?: "")
+        val o = runCatching { get(url) }.getOrNull() ?: return emptyList()
         val out = ArrayList<Game>()
         o.optJSONArray("events")?.objects { e -> parseEvent(e, l)?.let { out += it } }
         return out.sortedWith(compareBy<Game>({ stateOrder(it.state) }, { it.startMs }))
@@ -126,6 +136,66 @@ class SportsRepo(private val http: OkHttpClient) {
         }.awaitAll().flatten().sortedWith(compareBy({ stateOrder(it.second.state) }, { it.second.startMs }))
     }
 
+    /** Line score and team stats from ESPN's game summary. */
+    suspend fun boxScore(g: Game): BoxScore? {
+        val o = runCatching { get("${base(g.league)}/summary?event=${g.id}") }.getOrNull() ?: return null
+        val comp = o.optJSONObject("header")?.optJSONArray("competitions")?.optJSONObject(0)
+        var awayLines = emptyList<String>(); var homeLines = emptyList<String>()
+        comp?.optJSONArray("competitors")?.objects { c ->
+            val l = ArrayList<String>()
+            c.optJSONArray("linescores")?.objects { ls -> (ls.s("displayValue") ?: ls.s("value"))?.let { l += it.substringBefore(".0") } }
+            if (c.s("homeAway") == "home") homeLines = l else awayLines = l
+        }
+        // Team stats: pair up the same label for both teams.
+        val stats = ArrayList<Triple<String, String, String>>()
+        val teams = o.optJSONObject("boxscore")?.optJSONArray("teams")
+        if (teams != null && teams.length() == 2) {
+            val t0 = teams.optJSONObject(0); val t1 = teams.optJSONObject(1)
+            val firstIsHome = t0?.s("homeAway") == "home"
+            val awayT = if (firstIsHome) t1 else t0
+            val homeT = if (firstIsHome) t0 else t1
+            val homeMap = HashMap<String, String>()
+            homeT?.optJSONArray("statistics")?.objects { st -> (st.s("label") ?: st.s("name"))?.let { homeMap[it] = st.s("displayValue") ?: "" } }
+            awayT?.optJSONArray("statistics")?.objects { st ->
+                val label = st.s("label") ?: st.s("name") ?: return@objects
+                stats += Triple(label, st.s("displayValue") ?: "", homeMap[label] ?: "")
+            }
+        }
+        if (awayLines.isEmpty() && homeLines.isEmpty() && stats.isEmpty()) return null
+        return BoxScore(awayLines, homeLines, stats.take(12))
+    }
+
+    /** Formula 1 race weekends (practice, qualifying, sprint, race). */
+    suspend fun f1Weekends(): List<RaceWeekend> {
+        val l = league("f1") ?: return emptyList()
+        val o = runCatching { get("${base(l)}/scoreboard") }.getOrNull() ?: return emptyList()
+        val out = ArrayList<RaceWeekend>()
+        o.optJSONArray("events")?.objects { e ->
+            val sessions = ArrayList<RaceSession>()
+            e.optJSONArray("competitions")?.objects { c ->
+                val type = c.optJSONObject("type")
+                val name = type?.s("text") ?: type?.s("abbreviation") ?: "Session"
+                val st = c.optJSONObject("status")?.optJSONObject("type")
+                val start = runCatching { Instant.parse(normaliseDate(c.s("date") ?: c.s("startDate") ?: "")).toEpochMilli() }.getOrDefault(0L)
+                // Leader / winner where available
+                var leader: String? = null
+                c.optJSONArray("competitors")?.objects { cp ->
+                    if (leader == null && (cp.i("order", 99) == 1 || cp.bool("winner"))) {
+                        leader = cp.optJSONObject("athlete")?.s("displayName") ?: cp.optJSONObject("athlete")?.s("shortName")
+                    }
+                }
+                sessions += RaceSession(name, start, st?.s("state") ?: "pre", st?.s("shortDetail") ?: "", leader)
+            }
+            out += RaceWeekend(
+                id = e.s("id") ?: "",
+                name = e.s("name") ?: e.s("shortName") ?: "Grand Prix",
+                circuit = e.optJSONObject("circuit")?.s("fullName") ?: e.optJSONArray("venues")?.optJSONObject(0)?.s("fullName"),
+                sessions = sessions.sortedBy { it.startMs },
+            )
+        }
+        return out
+    }
+
     /** Fresh copy of one game (for live score updates on the detail screen). */
     suspend fun refresh(g: Game): Game =
         scoreboard(g.league).firstOrNull { it.id == g.id } ?: g
@@ -141,6 +211,8 @@ class SportsRepo(private val http: OkHttpClient) {
             val team = c.optJSONObject("team") ?: return@objects
             val logo = team.s("logo") ?: team.optJSONArray("logos")?.optJSONObject(0)?.s("href")
             val score = c.optJSONObject("score")?.s("displayValue") ?: c.s("score")
+            val lines = ArrayList<String>()
+            c.optJSONArray("linescores")?.objects { ls -> (ls.s("displayValue") ?: ls.s("value"))?.let { lines += it.substringBefore(".0") } }
             val record = c.optJSONArray("records")?.optJSONObject(0)?.s("summary")
                 ?: c.optJSONArray("record")?.optJSONObject(0)?.s("displayValue")
             val side = TeamSide(
@@ -152,6 +224,7 @@ class SportsRepo(private val http: OkHttpClient) {
                 logo = logo,
                 score = score,
                 record = record,
+                linescores = lines,
             )
             if (c.s("homeAway") == "home") home = side else away = side
         }
@@ -169,7 +242,14 @@ class SportsRepo(private val http: OkHttpClient) {
         }
         comp.optJSONArray("geoBroadcasts")?.objects { b -> b.optJSONObject("media")?.s("shortName")?.let { nets += it } }
         val venue = comp.optJSONObject("venue")?.s("fullName")
-        return Game(e.s("id") ?: "${h.abbr}-${a.abbr}-$start", league, start, state, detail, h, a, nets.toList(), venue)
+        val sit = comp.optJSONObject("situation")
+        return Game(
+            e.s("id") ?: "${h.abbr}-${a.abbr}-$start", league, start, state, detail, h, a, nets.toList(), venue,
+            situation = sit?.s("downDistanceText") ?: sit?.s("shortDownDistanceText"),
+            possessionId = sit?.s("possession"),
+            redZone = sit?.bool("isRedZone") == true,
+            lastPlay = sit?.optJSONObject("lastPlay")?.s("text"),
+        )
     }
 
     private fun normaliseDate(d: String): String =
@@ -260,3 +340,9 @@ class SportsRepo(private val http: OkHttpClient) {
         }
     }
 }
+
+data class BoxScore(val awayLines: List<String>, val homeLines: List<String>, val stats: List<Triple<String, String, String>>)
+
+data class RaceSession(val name: String, val startMs: Long, val state: String, val detail: String, val leader: String?)
+
+data class RaceWeekend(val id: String, val name: String, val circuit: String?, val sessions: List<RaceSession>)

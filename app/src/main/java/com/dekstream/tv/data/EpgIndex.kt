@@ -54,6 +54,21 @@ class EpgIndex(private val http: OkHttpClient) {
 
     val isLoaded get() = byChannel.isNotEmpty()
 
+    /** Programmes whose title matches, on now or later (by guide channel id). */
+    fun search(q: String, limit: Int = 80): List<Pair<String, Entry>> {
+        val n = q.trim().lowercase()
+        if (n.length < 2) return emptyList()
+        val now = System.currentTimeMillis()
+        val out = ArrayList<Pair<String, Entry>>()
+        for ((id, list) in byChannel) {
+            for (e in list) {
+                if (e.endMs > now && e.title.lowercase().contains(n)) out += id to e
+            }
+            if (out.size > limit * 4) break
+        }
+        return out.sortedBy { it.second.startMs }.take(limit)
+    }
+
     fun programmesFor(c: Channel): List<Entry> {
         c.epgChannelId?.lowercase()?.let { id -> byChannel[id]?.let { return it } }
         val id = byName[normName(c.name)] ?: return emptyList()

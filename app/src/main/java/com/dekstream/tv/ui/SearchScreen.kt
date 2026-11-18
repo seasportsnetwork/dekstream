@@ -23,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.dekstream.tv.DekStreamApp
 import com.dekstream.tv.data.Channel
 import kotlinx.coroutines.delay
@@ -36,6 +37,14 @@ fun SearchScreen(state: AppState) {
     val channels by produceState<List<Channel>>(emptyList(), q) {
         delay(250) // debounce typing
         value = runCatching { repo.searchChannels(q) }.getOrDefault(emptyList())
+    }
+    // Guide programmes ("On TV"), using the whole-guide index.
+    val guide by rememberLoad(repo.source.id) { repo.guideIndex() }
+    val programmes by produceState<List<Pair<Channel, com.dekstream.tv.data.EpgIndex.Entry>>>(emptyList(), q, guide) {
+        delay(300)
+        val idx = guide.valueOrNull() ?: run { value = emptyList(); return@produceState }
+        val byEpg = repo.allChannels().filter { it.epgChannelId != null }.groupBy { it.epgChannelId!!.lowercase() }
+        value = idx.search(q).mapNotNull { (id, e) -> byEpg[id]?.firstOrNull()?.let { it to e } }
     }
     val movies = repo.searchLoadedVod(q)
     val shows = repo.searchLoadedSeries(q)
@@ -69,6 +78,27 @@ fun SearchScreen(state: AppState) {
                     }
                 }
             }
+            if (programmes.isNotEmpty()) {
+                item { SectionTitle("On TV") }
+                items(programmes, key = { "p" + it.first.streamId + "-" + it.second.startMs }) { (c, e) ->
+                    val now = System.currentTimeMillis()
+                    val live = now >= e.startMs && now < e.endMs
+                    ChannelRowItem(
+                        name = e.title, icon = c.icon, number = null,
+                        now = (if (live) "Now" else gameTime(e.startMs)) + " · " + c.name,
+                        next = null, nowProgress = null, favorite = false,
+                        onClick = {
+                            if (live) { app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c)) }
+                            else {
+                                app.reminders.add(app.session?.profile?.id ?: "", c,
+                                    com.dekstream.tv.data.Program(e.title, e.desc, e.startMs, e.endMs, false))
+                            }
+                        },
+                        onLongClick = {},
+                    )
+                }
+                item { Text("Tap something on now to watch it, or something later to set a reminder.", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(4.dp)) }
+            }
             if (channels.isNotEmpty()) {
                 item { SectionTitle("Channels") }
                 items(channels, key = { it.streamId }) { c ->
@@ -83,7 +113,7 @@ fun SearchScreen(state: AppState) {
                     )
                 }
             }
-            if (q.length >= 2 && channels.isEmpty() && movies.isEmpty() && shows.isEmpty()) {
+            if (q.length >= 2 && channels.isEmpty() && movies.isEmpty() && shows.isEmpty() && programmes.isEmpty()) {
                 item { Text("No matches yet. Movie and series search covers the categories you've opened.", color = DS.TextDim, modifier = Modifier.padding(16.dp)) }
             }
         }

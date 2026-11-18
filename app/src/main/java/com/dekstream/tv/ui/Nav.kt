@@ -42,6 +42,8 @@ sealed interface Route {
     data class VodCategory(val category: Category, val isSeries: Boolean) : Route
     data class GameDetail(val game: Game) : Route
     data object SportsSettings : Route
+    /** Full-screen multiview pre-filled with channels (e.g. from Sports). */
+    data class Multiview(val channels: List<Channel>) : Route
     /** Add a playlist (source == null) or edit one. */
     data class EditSource(val source: com.dekstream.tv.data.Source?) : Route
     data class Player(val request: PlayRequest, val zapList: List<Channel> = emptyList()) : Route
