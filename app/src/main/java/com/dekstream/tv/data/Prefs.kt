@@ -111,6 +111,73 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
         }
     }.getOrDefault(emptyList())
 
+    // --- Channel & category customisation (this profile + playlist) ---
+    /** Bumped on every change so screens reload. */
+    private val _customVersion = MutableStateFlow(0)
+    val customVersion: StateFlow<Int> = _customVersion
+    private fun bump() { _customVersion.value++ }
+
+    var hiddenChannels: Set<Int> = loadIntSet("hiddenCh"); private set
+    var lockedChannels: Set<Int> = loadIntSet("lockedCh"); private set
+    var hiddenCats: Set<String> = loadStrSet("hiddenCat"); private set
+    var lockedCats: Set<String> = loadStrSet("lockedCat"); private set
+    var channelNames: Map<Int, String> = loadMap("chNames").mapKeys { it.key.toInt() }; private set
+    var channelNumbers: Map<Int, Int> = loadMap("chNums").mapKeys { it.key.toInt() }.mapValues { it.value.toInt() }; private set
+    var catNames: Map<String, String> = loadMap("catNames"); private set
+    var epgOverrides: Map<Int, String> = loadMap("epgOv").mapKeys { it.key.toInt() }; private set
+    var groups: List<CustomGroup> = loadGroups(); private set
+
+    fun setHidden(id: Int, v: Boolean) { hiddenChannels = if (v) hiddenChannels + id else hiddenChannels - id; saveIntList("hiddenCh", hiddenChannels.toList()); bump() }
+    fun setLocked(id: Int, v: Boolean) { lockedChannels = if (v) lockedChannels + id else lockedChannels - id; saveIntList("lockedCh", lockedChannels.toList()); bump() }
+    fun setCatHidden(id: String, v: Boolean) { hiddenCats = if (v) hiddenCats + id else hiddenCats - id; saveStrSet("hiddenCat", hiddenCats); bump() }
+    fun setCatLocked(id: String, v: Boolean) { lockedCats = if (v) lockedCats + id else lockedCats - id; saveStrSet("lockedCat", lockedCats); bump() }
+    fun renameChannel(id: Int, name: String?) {
+        channelNames = if (name.isNullOrBlank()) channelNames - id else channelNames + (id to name.trim())
+        saveMap("chNames", channelNames.mapKeys { it.key.toString() }); bump()
+    }
+    fun renumberChannel(id: Int, num: Int?) {
+        channelNumbers = if (num == null) channelNumbers - id else channelNumbers + (id to num)
+        saveMap("chNums", channelNumbers.mapKeys { it.key.toString() }.mapValues { it.value.toString() }); bump()
+    }
+    fun renameCategory(id: String, name: String?) {
+        catNames = if (name.isNullOrBlank()) catNames - id else catNames + (id to name.trim())
+        saveMap("catNames", catNames); bump()
+    }
+    fun setEpgOverride(id: Int, epgId: String?) {
+        epgOverrides = if (epgId == null) epgOverrides - id else epgOverrides + (id to epgId)
+        saveMap("epgOv", epgOverrides.mapKeys { it.key.toString() }); bump()
+    }
+    fun isChannelLocked(c: Channel) = c.streamId in lockedChannels || ("l:" + c.categoryId) in lockedCats
+
+    fun saveGroup(g: CustomGroup) {
+        val l = groups.toMutableList(); val i = l.indexOfFirst { it.id == g.id }
+        if (i >= 0) l[i] = g else l += g
+        groups = l; persistGroups()
+    }
+    fun deleteGroup(id: String) { groups = groups.filter { it.id != id }; persistGroups() }
+    fun addToGroup(groupId: String, channelId: Int) {
+        groups.firstOrNull { it.id == groupId }?.let { g -> if (channelId !in g.channels) saveGroup(g.copy(channels = g.channels + channelId)) }
+    }
+    private fun persistGroups() {
+        val a = JSONArray()
+        groups.forEach { g -> a.put(JSONObject().apply { put("id", g.id); put("n", g.name); put("c", g.channels.joinToString(",")) }) }
+        sp.edit().putString("groups", a.toString()).apply(); bump()
+    }
+    private fun loadGroups(): List<CustomGroup> = runCatching {
+        val a = JSONArray(sp.getString("groups", "[]"))
+        (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
+            CustomGroup(o.getString("id"), o.optString("n"), o.optString("c").split(',').mapNotNull { it.trim().toIntOrNull() })
+        }
+    }.getOrDefault(emptyList())
+
+    private fun loadStrSet(key: String): Set<String> = sp.getString(key, "")!!.split('\u0001').filter { it.isNotEmpty() }.toSet()
+    private fun saveStrSet(key: String, v: Set<String>) = sp.edit().putString(key, v.joinToString("\u0001")).apply()
+    private fun loadMap(key: String): Map<String, String> = runCatching {
+        val o = JSONObject(sp.getString(key, "{}")!!)
+        o.keys().asSequence().associateWith { o.getString(it) }
+    }.getOrDefault(emptyMap())
+    private fun saveMap(key: String, m: Map<String, String>) = sp.edit().putString(key, JSONObject(m).toString()).apply()
+
     // --- Favourite channels ---
     private val _favorites = MutableStateFlow(loadIntSet("favs"))
     val favorites: StateFlow<Set<Int>> = _favorites
@@ -208,3 +275,6 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
 
 /** A saved multiview: grid size (2, 3 or 4 tiles; 3 = one big + two small) and a channel per tile (-1 = empty). */
 data class MultiLayout(val name: String, val grid: Int, val channels: List<Int>)
+
+/** A user-made channel group (shown above the provider's categories). */
+data class CustomGroup(val id: String, val name: String, val channels: List<Int>)

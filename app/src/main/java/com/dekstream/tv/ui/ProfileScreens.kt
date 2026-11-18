@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.ChildCare
@@ -482,6 +483,17 @@ fun ProfileScreen(state: AppState) {
         }
         Text("Tap a playlist to switch to it. Favorites and progress are kept per playlist.", color = DS.TextDim, fontSize = 12.sp,
             modifier = Modifier.padding(top = 6.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(top = 10.dp).focusRing(shape, 1.015f).clip(shape).background(DS.Surface)
+                .clickable { state.push(Route.ChannelManager) }.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.Tune, null, tint = DS.Accent)
+            Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                Text("Channels & groups", color = DS.Text, fontSize = 15.sp)
+                Text("Hidden, locked, renamed, custom groups and guide matches", color = DS.TextDim, fontSize = 12.sp)
+            }
+        }
 
         // Account for the active playlist
         SectionLabel("ACCOUNT · ${session.source.name.uppercase()}")

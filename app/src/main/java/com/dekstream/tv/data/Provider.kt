@@ -8,7 +8,7 @@ interface Provider {
     val supportsVod: Boolean
     val supportsSeries: Boolean
     /** Stable key for caches (guide, etc.). */
-    val cacheKey: String get() = source.id + source.url + source.username + source.mac
+    val cacheKey: String get() = source.id + source.url + source.username + source.mac + source.epgUrl + source.extraEpg.joinToString()
 
     /** Checks the source works; returns account details when the source has any. */
     suspend fun verify(): AccountInfo?
@@ -35,6 +35,9 @@ interface Provider {
 
     /** XMLTV guide covering all channels, if the source has one. */
     fun xmltvUrl(): String? = null
+
+    /** Main guide plus any extra guides the user added, highest priority first. */
+    fun xmltvUrls(): List<String> = (listOfNotNull(xmltvUrl()) + source.extraEpg).distinct()
 
     /** Turns a stored URL into a playable one (portals hand out a fresh link per play). */
     suspend fun resolve(url: String): String = url

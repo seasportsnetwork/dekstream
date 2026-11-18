@@ -81,6 +81,10 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
     var pass by remember { mutableStateOf(existing?.password ?: "") }
     var epgUrl by remember { mutableStateOf(existing?.epgUrl ?: "") }
     var mac by remember { mutableStateOf(existing?.mac?.ifBlank { null } ?: randomMac()) }
+    var loadLive by remember { mutableStateOf(existing?.loadLive ?: true) }
+    var loadMovies by remember { mutableStateOf(existing?.loadMovies ?: true) }
+    var loadShows by remember { mutableStateOf(existing?.loadShows ?: true) }
+    var extraEpg by remember { mutableStateOf(existing?.extraEpg?.joinToString("\n") ?: "") }
     var fileLabel by remember { mutableStateOf(existing?.takeIf { it.type == SourceType.M3U_FILE }?.url?.substringAfterLast('/')) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -129,6 +133,8 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
         password = if (type == SourceType.XTREAM) pass.trim() else "",
         epgUrl = if (type == SourceType.M3U_URL || type == SourceType.M3U_FILE) epgUrl.trim() else "",
         mac = if (type == SourceType.STALKER) mac.trim().uppercase() else "",
+        loadLive = loadLive, loadMovies = loadMovies, loadShows = loadShows,
+        extraEpg = extraEpg.split('\n', ',', ' ').map { it.trim() }.filter { it.startsWith("http") },
     )
 
     val canSave = when (type) {
@@ -205,6 +211,20 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
                         color = DS.TextDim, fontSize = 12.sp)
                 }
             }
+
+            Text("Load from this playlist", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CategoryChip("Live TV", loadLive) { loadLive = !loadLive }
+                CategoryChip("Movies", loadMovies) { loadMovies = !loadMovies }
+                CategoryChip("Shows", loadShows) { loadShows = !loadShows }
+            }
+            OutlinedTextField(
+                extraEpg, { extraEpg = it }, label = { Text("Extra guides (XMLTV URLs, one per line)") }, colors = fieldColors,
+                modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            )
+            Text("Listed in priority order. They add guide data for channels the main guide misses and fill its gaps.",
+                color = DS.TextDim, fontSize = 12.sp)
 
             error?.let { Text(it, color = DS.Live, fontSize = 14.sp) }
 

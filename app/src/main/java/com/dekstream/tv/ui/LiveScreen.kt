@@ -2,6 +2,7 @@ package com.dekstream.tv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -42,11 +43,14 @@ const val ALL_ID = "__all__"
 /** Category list with Favorites and All Channels pinned on top. */
 @Composable
 fun rememberLiveCategories(): Load<List<Category>> {
-    val repo = DekStreamApp.instance.repo
-    val cats by rememberLoad(Unit) { repo!!.liveCategories() }
+    val app = DekStreamApp.instance
+    val repo = app.repo
+    val version by app.prefs.customVersion.collectAsState()
+    val cats by rememberLoad(version) { repo!!.liveCategories() }
     val allow = kidsAllowed("l:")
+    val groups = remember(version) { if (allow == null) app.prefs.groups.map { Category("g:" + it.id, "▸ " + it.name) } else emptyList() }
     return when (val c = cats) {
-        is Load.Ok -> Load.Ok(listOf(Category(FAV_ID, "★ Favorites"), Category(ALL_ID, "All Channels")) +
+        is Load.Ok -> Load.Ok(listOf(Category(FAV_ID, "★ Favorites")) + groups + listOf(Category(ALL_ID, "All Channels")) +
             c.value.filter { allow == null || it.id in allow })
         else -> c
     }
@@ -55,9 +59,14 @@ fun rememberLiveCategories(): Load<List<Category>> {
 fun filterChannels(all: List<Channel>, catId: String, favs: Set<Int>): List<Channel> {
     val allow = kidsAllowedNow("l:")
     val visible = if (allow == null) all else all.filter { it.categoryId in allow }
-    return when (catId) {
-        FAV_ID -> visible.filter { it.streamId in favs }
-        ALL_ID -> visible
+    return when {
+        catId == FAV_ID -> visible.filter { it.streamId in favs }
+        catId == ALL_ID -> visible
+        catId.startsWith("g:") -> {
+            val g = DekStreamApp.instance.session?.prefs?.groups?.firstOrNull { it.id == catId.removePrefix("g:") }
+            val byId = visible.associateBy { it.streamId }
+            g?.channels?.mapNotNull { byId[it] }.orEmpty()
+        }
         else -> visible.filter { it.categoryId == catId }
     }
 }
@@ -79,10 +88,13 @@ fun LiveScreen(state: AppState) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val cats = rememberLiveCategories()
-    val all by rememberLoad(Unit) { repo.allChannels() }
+    val version by app.prefs.customVersion.collectAsState()
+    val all by rememberLoad(version) { repo.allChannels() }
+    var catMenu by remember { mutableStateOf<Category?>(null) }
     val favs by app.prefs.favorites.collectAsState()
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
 
+    catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }) }
     LoadView(cats) { catList ->
         val catId = selected ?: if (favs.isNotEmpty()) FAV_ID else catList.getOrNull(2)?.id ?: ALL_ID
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -94,7 +106,7 @@ fun LiveScreen(state: AppState) {
                         contentPadding = PaddingValues(12.dp),
                     ) {
                         items(catList, key = { it.id }) { c ->
-                            CategoryItem(c.name, c.id == catId) { selected = c.id }
+                            CategoryItem(c.name, c.id == catId, onLongClick = { catMenu = c }) { selected = c.id }
                         }
                     }
                     Box(Modifier.weight(1f).fillMaxHeight()) {
@@ -105,7 +117,7 @@ fun LiveScreen(state: AppState) {
                 Column(Modifier.fillMaxSize()) {
                     LazyRow(contentPadding = PaddingValues(12.dp), horizontalArrangement = rowSpacing) {
                         items(catList, key = { it.id }) { c ->
-                            CategoryChip(c.name, c.id == catId) { selected = c.id }
+                            CategoryChip(c.name, c.id == catId, onLongClick = { catMenu = c }) { selected = c.id }
                         }
                     }
                     LoadView(all) { list -> ChannelList(filterChannels(list, catId, favs), state) }
@@ -115,8 +127,9 @@ fun LiveScreen(state: AppState) {
     }
 }
 
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun CategoryItem(name: String, selected: Boolean, onClick: () -> Unit) {
+fun CategoryItem(name: String, selected: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(8.dp)
     Text(
         name,
@@ -126,7 +139,7 @@ fun CategoryItem(name: String, selected: Boolean, onClick: () -> Unit) {
             .focusRing(shape, 1.02f)
             .clip(shape)
             .background(if (selected) DS.AccentSoft else DS.Bg)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         color = if (selected) DS.Text else DS.TextDim,
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
@@ -136,8 +149,9 @@ fun CategoryItem(name: String, selected: Boolean, onClick: () -> Unit) {
     )
 }
 
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-fun CategoryChip(name: String, selected: Boolean, onClick: () -> Unit) {
+fun CategoryChip(name: String, selected: Boolean, onLongClick: (() -> Unit)? = null, onClick: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
     Text(
         name,
@@ -145,7 +159,7 @@ fun CategoryChip(name: String, selected: Boolean, onClick: () -> Unit) {
             .focusRing(shape)
             .clip(shape)
             .background(if (selected) DS.Accent else DS.Surface)
-            .clickable(onClick = onClick)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         color = DS.Text,
         fontSize = 13.sp,
@@ -158,8 +172,10 @@ fun ChannelList(channels: List<Channel>, state: AppState) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val favs by app.prefs.favorites.collectAsState()
+    var menuFor by remember { mutableStateOf<Channel?>(null) }
+    menuFor?.let { c -> ChannelOptionsDialog(c, onDismiss = { menuFor = null }) }
     if (channels.isEmpty()) {
-        Text("No channels here yet. Long-press any channel to add it to Favorites.", color = DS.TextDim, modifier = Modifier.padding(24.dp))
+        Text("No channels here yet. Long-press any channel for options like Favorites and groups.", color = DS.TextDim, modifier = Modifier.padding(24.dp))
         return
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
@@ -178,7 +194,7 @@ fun ChannelList(channels: List<Channel>, state: AppState) {
                     app.prefs.markChannelWatched(c.streamId)
                     state.play(repo.liveRequest(c), channels)
                 },
-                onLongClick = { app.prefs.toggleFavorite(c.streamId) },
+                onLongClick = { menuFor = c },
             )
         }
     }

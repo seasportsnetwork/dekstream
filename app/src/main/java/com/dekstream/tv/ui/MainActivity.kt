@@ -113,6 +113,13 @@ private fun SignedIn() {
         if (!state.pop()) state.tab = Tab.Home
     }
 
+    state.lockedPending?.let { p ->
+        ParentGate(requireSetup = false, reason = "${p.request.title} is locked.", onDismiss = { state.lockedPending = null }) {
+            state.lockedPending = null
+            state.push(p)
+        }
+    }
+
     when (top) {
         null -> Shell(state)
         is Route.Player -> PlayerScreen(top.request, top.zapList, onExit = { state.pop() })
@@ -124,6 +131,7 @@ private fun SignedIn() {
         is Route.Multiview -> MultiviewScreen(top.channels, onExit = { state.pop() })
         is Route.KidsRules -> KidsRulesScreen(top.profileId, state)
         Route.AppearanceSettings -> AppearanceScreen(state)
+        Route.ChannelManager -> ChannelManagerScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
 }

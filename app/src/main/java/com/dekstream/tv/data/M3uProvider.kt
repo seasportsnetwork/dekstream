@@ -67,8 +67,9 @@ class M3uProvider(
 
     private suspend fun guide(): EpgIndex? {
         data()
-        val url = xmltvUrl() ?: return null
-        return runCatching { epg.ensure(cacheKey, url); epg }.getOrNull()
+        val urls = xmltvUrls()
+        if (urls.isEmpty()) return null
+        return runCatching { epg.ensure(cacheKey, urls); epg }.getOrNull()
     }
 
     private fun EpgIndex.Entry.toProgram(c: Channel) =

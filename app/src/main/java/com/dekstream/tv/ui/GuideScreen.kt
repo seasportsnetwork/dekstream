@@ -2,6 +2,7 @@ package com.dekstream.tv.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -70,7 +71,12 @@ fun GuideScreen(state: AppState) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val cats = rememberLiveCategories()
-    val all by rememberLoad(Unit) { repo.allChannels() }
+    val version by app.prefs.customVersion.collectAsState()
+    val all by rememberLoad(version) { repo.allChannels() }
+    var catMenu by remember { mutableStateOf<com.dekstream.tv.data.Category?>(null) }
+    var chMenu by remember { mutableStateOf<Channel?>(null) }
+    catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }) }
+    chMenu?.let { c -> ChannelOptionsDialog(c, onDismiss = { chMenu = null }) }
     val favs by app.prefs.favorites.collectAsState()
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var picked by remember { mutableStateOf<Pair<Channel, Program>?>(null) }
@@ -91,7 +97,7 @@ fun GuideScreen(state: AppState) {
         val catId = selected ?: if (favs.isNotEmpty()) FAV_ID else catList.getOrNull(2)?.id ?: ALL_ID
         Column(Modifier.fillMaxSize().background(Appearance.guideBrush)) {
             LazyRow(contentPadding = PaddingValues(12.dp), horizontalArrangement = rowSpacing) {
-                items(catList, key = { it.id }) { c -> CategoryChip(c.name, c.id == catId) { selected = c.id } }
+                items(catList, key = { it.id }) { c -> CategoryChip(c.name, c.id == catId, onLongClick = { catMenu = c }) { selected = c.id } }
             }
             LoadView(all) { list ->
                 val channels = filterChannels(list, catId, favs)
@@ -130,6 +136,7 @@ fun GuideScreen(state: AppState) {
                                         state.play(repo.liveRequest(c), channels)
                                     },
                                     onProgram = { p -> picked = c to p },
+                                    onChannelMenu = { chMenu = c },
                                 )
                             }
                         }
@@ -186,6 +193,7 @@ fun GuideScreen(state: AppState) {
     }
 }
 
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 private fun GuideRow(
     c: Channel,
@@ -197,6 +205,7 @@ private fun GuideRow(
     onScrollTo: (Float) -> Unit,
     onChannel: () -> Unit,
     onProgram: (Program) -> Unit,
+    onChannelMenu: () -> Unit,
 ) {
     val repo = DekStreamApp.instance.repo ?: return
     val programs by produceState<List<Program>?>(null, c.streamId) {
@@ -211,7 +220,7 @@ private fun GuideRow(
         Row(
             Modifier.width(CHANNEL_COL).fillMaxHeight().padding(end = 4.dp)
                 .focusRing(shape, 1.02f).clip(shape).background(DS.Surface)
-                .clickable(onClick = onChannel).padding(horizontal = 8.dp),
+                .combinedClickable(onClick = onChannel, onLongClick = onChannelMenu).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ChannelLogo(c.icon, 40.dp)

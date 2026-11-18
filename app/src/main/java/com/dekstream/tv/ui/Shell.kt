@@ -82,7 +82,7 @@ private fun SideRail(state: AppState) {
         Row(Modifier.padding(start = 4.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically) {
             BrandMark(30.dp, nameSize = 19)
         }
-        Tab.entries.forEach { t ->
+        visibleTabs().forEach { t ->
             val selected = state.tab == t
             val shape = RoundedCornerShape(10.dp)
             Row(
@@ -112,7 +112,7 @@ private val bottomTabs = listOf(Tab.Home, Tab.Live, Tab.Guide, Tab.Movies, Tab.S
 private fun BottomBar(state: AppState) {
     // The less common tabs (Multiview, Search, Settings) live behind "More" on Home.
     NavigationBar(containerColor = DS.Surface) {
-        bottomTabs.forEach { t ->
+        bottomTabs.filter { it in visibleTabs() }.forEach { t ->
             NavigationBarItem(
                 selected = state.tab == t,
                 onClick = { state.tab = t },
@@ -126,6 +126,21 @@ private fun BottomBar(state: AppState) {
                     indicatorColor = DS.AccentSoft,
                 ),
             )
+        }
+    }
+}
+
+/** Tabs for this playlist and profile (e.g. no Movies tab if the playlist doesn't load movies). */
+fun visibleTabs(): List<Tab> {
+    val session = com.dekstream.tv.DekStreamApp.instance.session ?: return Tab.entries
+    val src = session.source
+    return Tab.entries.filter { t ->
+        when (t) {
+            Tab.Live, Tab.Guide, Tab.Multiview -> src.loadLive
+            Tab.Movies -> src.loadMovies
+            Tab.Series -> src.loadShows
+            Tab.Settings -> true
+            else -> true
         }
     }
 }
