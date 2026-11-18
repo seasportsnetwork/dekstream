@@ -22,6 +22,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.Button
@@ -62,6 +65,9 @@ fun GameDetailScreen(initial: Game, state: AppState) {
     val repo = app.repo ?: return
     var game by remember { mutableStateOf(initial) }
     val epgStatus by app.epg.status.collectAsState()
+    val hide by app.prefs.hideScores.collectAsState()
+    val pinned by app.prefs.sportsChannels.collectAsState()
+    val box by rememberLoad(initial.id, game.detail) { app.sports.boxScore(game) }
     BackHandler { state.pop() }
 
     // Live score updates.
@@ -99,7 +105,18 @@ fun GameDetailScreen(initial: Game, state: AppState) {
                     Text(game.league.name, color = DS.TextDim, fontSize = 15.sp)
                 }
             }
-            item { Scoreboard(game) }
+            item { Scoreboard(game, hide) }
+            if (game.isLive && !hide && (game.redZone || game.situation != null || game.lastPlay != null)) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(top = 10.dp).clip(RoundedCornerShape(12.dp)).background(DS.Surface).padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (game.redZone) { RedZonePill(); HSpacer(8.dp) }
+                            game.situation?.let { Text(it, color = DS.Text, fontSize = 14.sp, fontWeight = FontWeight.Medium) }
+                        }
+                        game.lastPlay?.let { Text("Last play: $it", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
+                    }
+                }
+            }
             item {
                 Button(
                     onClick = { best?.let { play(it, if (it.confirmed) confirmed else guesses) } },
@@ -138,13 +155,17 @@ fun GameDetailScreen(initial: Game, state: AppState) {
                     }
                 }
             }
+            if (!hide && game.state != "pre") {
+                val bs = box.valueOrNull()
+                if (bs != null) item { BoxScoreCard(game, bs) }
+            }
             if (confirmed.isNotEmpty()) {
                 item { SectionLabel("WATCH ON · CONFIRMED IN YOUR GUIDE") }
-                items(confirmed, key = { "c" + it.channel.streamId }) { m -> MatchRow(m) { play(m, confirmed) } }
+                items(confirmed, key = { "c" + it.channel.streamId }) { m -> MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, confirmed) } }
             }
             if (guesses.isNotEmpty()) {
                 item { SectionLabel(if (confirmed.isEmpty()) "POSSIBLE CHANNELS · NOT IN GUIDE" else "OTHER POSSIBLE CHANNELS") }
-                items(guesses, key = { "g" + it.channel.streamId }) { m -> MatchRow(m) { play(m, guesses) } }
+                items(guesses, key = { "g" + it.channel.streamId }) { m -> MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, guesses) } }
             }
             if (matches is Load.Ok && list.isEmpty()) {
                 item {
@@ -165,14 +186,14 @@ fun GameDetailScreen(initial: Game, state: AppState) {
 }
 
 @Composable
-private fun Scoreboard(g: Game) {
+private fun Scoreboard(g: Game, hide: Boolean) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(DS.Surface).padding(vertical = 22.dp, horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TeamColumn(g.away, g, Modifier.weight(1f))
         Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-            if (g.state != "pre") {
+            if (g.state != "pre" && !hide) {
                 Text("${g.away.score ?: "-"}  –  ${g.home.score ?: "-"}", color = DS.Text, fontSize = 34.sp, fontWeight = FontWeight.Bold)
             } else {
                 Text("vs", color = DS.TextDim, fontSize = 22.sp)
@@ -209,14 +230,15 @@ private fun TeamColumn(t: TeamSide, g: Game, modifier: Modifier) {
     }
 }
 
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun MatchRow(m: ChannelMatch, onClick: () -> Unit) {
+private fun MatchRow(m: ChannelMatch, isPinned: Boolean, onPin: () -> Unit, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     val p = m.programme
     val now = System.currentTimeMillis()
     Row(
         Modifier.fillMaxWidth().padding(vertical = 4.dp).focusRing(shape, 1.015f).clip(shape).background(DS.Surface)
-            .clickable(onClick = onClick).padding(12.dp),
+            .combinedClickable(onClick = onClick, onLongClick = onPin).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -249,6 +271,10 @@ private fun MatchRow(m: ChannelMatch, onClick: () -> Unit) {
                 Text("No guide info", color = DS.TextDim.copy(alpha = 0.6f), fontSize = 13.sp)
             }
         }
+        IconButton(onClick = onPin, modifier = Modifier.focusRing()) {
+            Icon(if (isPinned) Icons.Default.PushPin else Icons.Outlined.PushPin, if (isPinned) "Unpin from Your channels" else "Pin to Your channels",
+                tint = if (isPinned) DS.Accent else DS.TextDim)
+        }
         Icon(Icons.Default.PlayArrow, "Play", tint = DS.Text)
     }
 }
@@ -264,3 +290,49 @@ private fun QualityTag(text: String) {
 
 @Suppress("unused")
 private val spacing = Arrangement.spacedBy(8.dp)
+
+/** Period-by-period score and team stats side by side. */
+@Composable
+private fun BoxScoreCard(g: Game, bs: com.dekstream.tv.data.BoxScore) {
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp).clip(RoundedCornerShape(14.dp)).background(DS.Surface).padding(14.dp)) {
+        Text("Box score", color = DS.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        val n = maxOf(bs.awayLines.size, bs.homeLines.size)
+        if (n > 0) {
+            val label = when {
+                g.league.path.startsWith("baseball") -> "Inning"
+                g.league.path.startsWith("hockey") || g.league.path.startsWith("soccer") -> "Period"
+                else -> "Quarter"
+            }
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Text(label, color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.weight(2.2f))
+                for (i in 1..n) Text(if (label == "Quarter" && i > 4) "OT" else "$i", color = DS.TextDim, fontSize = 12.sp,
+                    modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                Text("T", color = DS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+            }
+            listOf(g.away to bs.awayLines, g.home to bs.homeLines).forEach { (t, lines) ->
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.weight(2.2f), verticalAlignment = Alignment.CenterVertically) {
+                        TeamLogo(t.logo, 20.dp)
+                        Text(t.abbr.ifBlank { t.nickname }, color = DS.Text, fontSize = 14.sp, modifier = Modifier.padding(start = 6.dp))
+                    }
+                    for (i in 0 until n) Text(lines.getOrNull(i) ?: "-", color = DS.Text, fontSize = 14.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                    Text(t.score ?: "-", color = DS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
+                }
+            }
+        }
+        if (bs.stats.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+                Text(g.away.abbr, color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+                Text("Team stats", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.weight(2f), textAlign = TextAlign.Center)
+                Text(g.home.abbr, color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+            }
+            bs.stats.forEach { (label, a, h) ->
+                Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
+                    Text(a, color = DS.Text, fontSize = 14.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
+                    Text(label, color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.weight(2f), textAlign = TextAlign.Center)
+                    Text(h, color = DS.Text, fontSize = 14.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                }
+            }
+        }
+    }
+}

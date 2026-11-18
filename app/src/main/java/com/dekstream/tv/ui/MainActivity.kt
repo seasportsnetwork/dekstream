@@ -119,6 +119,7 @@ private fun SignedIn() {
         is Route.VodCategory -> VodCategoryScreen(top.category, top.isSeries, state)
         is Route.GameDetail -> GameDetailScreen(top.game, state)
         Route.SportsSettings -> SportsSettingsScreen(state)
+        is Route.Multiview -> MultiviewScreen(top.channels, onExit = { state.pop() })
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
 }

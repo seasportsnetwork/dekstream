@@ -73,6 +73,44 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
         }.getOrDefault(emptyList())
     }
 
+    // Hide scores on the Sports tab (spoiler-free).
+    private val _hideScores = MutableStateFlow(pp.getBoolean("hideScores", false))
+    val hideScores: StateFlow<Boolean> = _hideScores
+    fun setHideScores(v: Boolean) { _hideScores.value = v; pp.edit().putBoolean("hideScores", v).apply() }
+
+    // Channels pinned to the Sports tab ("Your channels").
+    private val _sportsChannels = MutableStateFlow(loadIntList("sportsChannels"))
+    val sportsChannels: StateFlow<List<Int>> = _sportsChannels
+    fun toggleSportsChannel(id: Int) {
+        val l = _sportsChannels.value.toMutableList()
+        if (!l.remove(id)) l.add(id)
+        _sportsChannels.value = l
+        saveIntList("sportsChannels", l)
+    }
+
+    // Saved multiview layouts: name, grid size and channel ids (up to 8).
+    private val _layouts = MutableStateFlow(loadLayouts())
+    val layouts: StateFlow<List<MultiLayout>> = _layouts
+    fun saveLayout(l: MultiLayout) {
+        val list = (_layouts.value.filter { it.name != l.name } + l).takeLast(8)
+        _layouts.value = list
+        val a = JSONArray()
+        list.forEach { x -> a.put(JSONObject().apply { put("n", x.name); put("g", x.grid); put("c", x.channels.joinToString(",")) }) }
+        sp.edit().putString("layouts", a.toString()).apply()
+    }
+    fun deleteLayout(name: String) {
+        _layouts.value = _layouts.value.filter { it.name != name }
+        val a = JSONArray()
+        _layouts.value.forEach { x -> a.put(JSONObject().apply { put("n", x.name); put("g", x.grid); put("c", x.channels.joinToString(",")) }) }
+        sp.edit().putString("layouts", a.toString()).apply()
+    }
+    private fun loadLayouts(): List<MultiLayout> = runCatching {
+        val a = JSONArray(sp.getString("layouts", "[]"))
+        (0 until a.length()).map { a.getJSONObject(it) }.map { o ->
+            MultiLayout(o.getString("n"), o.optInt("g", 4), o.optString("c").split(',').map { it.trim().toIntOrNull() ?: -1 })
+        }
+    }.getOrDefault(emptyList())
+
     // --- Favourite channels ---
     private val _favorites = MutableStateFlow(loadIntSet("favs"))
     val favorites: StateFlow<Set<Int>> = _favorites
@@ -167,3 +205,6 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
         _recent.value = emptyList(); _progress.value = emptyMap()
     }
 }
+
+/** A saved multiview: grid size (2, 3 or 4 tiles; 3 = one big + two small) and a channel per tile (-1 = empty). */
+data class MultiLayout(val name: String, val grid: Int, val channels: List<Int>)

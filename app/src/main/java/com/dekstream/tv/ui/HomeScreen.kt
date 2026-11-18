@@ -84,7 +84,7 @@ fun HomeScreen(state: AppState) {
                 LazyRow(horizontalArrangement = rowSpacing) {
                     items(games, key = { it.first.key + it.second.id }) { (_, g) ->
                         Box(Modifier.width(340.dp)) {
-                            GameRow(g, favorite = true, onClick = { state.push(Route.GameDetail(g)) }, onLongClick = {})
+                            GameRow(g, favorite = true, hideScores = app.prefs.hideScores.collectAsState().value, onClick = { state.push(Route.GameDetail(g)) }, onLongClick = {})
                         }
                     }
                 }
