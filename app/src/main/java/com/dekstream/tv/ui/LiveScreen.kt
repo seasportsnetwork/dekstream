@@ -44,17 +44,35 @@ const val ALL_ID = "__all__"
 fun rememberLiveCategories(): Load<List<Category>> {
     val repo = DekStreamApp.instance.repo
     val cats by rememberLoad(Unit) { repo!!.liveCategories() }
+    val allow = kidsAllowed("l:")
     return when (val c = cats) {
-        is Load.Ok -> Load.Ok(listOf(Category(FAV_ID, "★ Favorites"), Category(ALL_ID, "All Channels")) + c.value)
+        is Load.Ok -> Load.Ok(listOf(Category(FAV_ID, "★ Favorites"), Category(ALL_ID, "All Channels")) +
+            c.value.filter { allow == null || it.id in allow })
         else -> c
     }
 }
 
-fun filterChannels(all: List<Channel>, catId: String, favs: Set<Int>): List<Channel> = when (catId) {
-    FAV_ID -> all.filter { it.streamId in favs }
-    ALL_ID -> all
-    else -> all.filter { it.categoryId == catId }
+fun filterChannels(all: List<Channel>, catId: String, favs: Set<Int>): List<Channel> {
+    val allow = kidsAllowedNow("l:")
+    val visible = if (allow == null) all else all.filter { it.categoryId in allow }
+    return when (catId) {
+        FAV_ID -> visible.filter { it.streamId in favs }
+        ALL_ID -> visible
+        else -> visible.filter { it.categoryId == catId }
+    }
 }
+
+/** For kids profiles with an allowlist: allowed category ids of this type ("l:", "v:", "s:"); null = no restriction. */
+fun kidsAllowedNow(prefix: String): Set<String>? {
+    val s = DekStreamApp.instance.session ?: return null
+    if (!s.profile.kids) return null
+    val all = s.settings.allowed(s.source.id)
+    if (all.isEmpty()) return null
+    return all.filter { it.startsWith(prefix) }.map { it.removePrefix(prefix) }.toSet()
+}
+
+@Composable
+fun kidsAllowed(prefix: String): Set<String>? = remember(DekStreamApp.instance.session?.key) { kidsAllowedNow(prefix) }
 
 @Composable
 fun LiveScreen(state: AppState) {

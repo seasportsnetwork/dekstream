@@ -21,7 +21,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.dekstream.tv.DekStreamApp
 
@@ -85,7 +87,7 @@ private fun Root() {
         profiles.isEmpty() -> FirstProfileScreen()
         pending != null -> SourceEditorScreen(existing = null, firstRun = true, onDone = {}, onCancel = { app.switchProfile() })
         session == null -> ProfilePickerScreen()
-        else -> key(session.key) { SignedIn() }
+        else -> key(session.key) { KidsGate { SignedIn() } }
     }
 }
 
@@ -120,6 +122,23 @@ private fun SignedIn() {
         is Route.GameDetail -> GameDetailScreen(top.game, state)
         Route.SportsSettings -> SportsSettingsScreen(state)
         is Route.Multiview -> MultiviewScreen(top.channels, onExit = { state.pop() })
+        is Route.KidsRules -> KidsRulesScreen(top.profileId, state)
+        Route.AppearanceSettings -> AppearanceScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
+}
+
+/** Locks a kids profile when paused, at bedtime, or out of time (re-checked every 30 s). */
+@Composable
+private fun KidsGate(content: @Composable () -> Unit) {
+    val app = DekStreamApp.instance
+    val session = app.session ?: return
+    if (!session.profile.kids) { content(); return }
+    var lock by remember { mutableStateOf(session.settings.lockReason()) }
+    LaunchedEffect(Unit) {
+        while (true) { kotlinx.coroutines.delay(30_000); lock = session.settings.lockReason() }
+    }
+    val l = lock
+    if (l != null) KidsLockScreen(l, session.settings, session.profile.name, onUnlocked = { lock = session.settings.lockReason() })
+    else content()
 }

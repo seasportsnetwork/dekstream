@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +35,23 @@ import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.ChildCare
+import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Pets
+import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.SportsBaseball
+import androidx.compose.material.icons.filled.SportsBasketball
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.SportsFootball
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -83,14 +101,30 @@ fun BrandMark(size: Dp = 40.dp, showName: Boolean = true, nameSize: Int = 24) {
     }
 }
 
+/** Avatar icons a profile can pick (or "" for the first letter of the name). */
+val AvatarIcons: List<Pair<String, ImageVector>> = listOf(
+    "face" to Icons.Default.Face, "star" to Icons.Default.Star, "rocket" to Icons.Default.RocketLaunch,
+    "pets" to Icons.Default.Pets, "football" to Icons.Default.SportsFootball, "basketball" to Icons.Default.SportsBasketball,
+    "baseball" to Icons.Default.SportsBaseball, "movie" to Icons.Default.Movie, "music" to Icons.Default.MusicNote,
+    "game" to Icons.Default.SportsEsports, "palette" to Icons.Default.Palette, "child" to Icons.Default.ChildCare,
+)
+
 @Composable
 fun Avatar(p: Profile, size: Dp, selected: Boolean = false) {
+    val icon = AvatarIcons.firstOrNull { it.first == p.avatar }?.second
     Box(
-        Modifier.size(size).clip(RoundedCornerShape(size / 4)).background(Color(p.color))
+        Modifier.size(size).clip(RoundedCornerShape(size / 4))
+            .background(Brush.linearGradient(listOf(Color(p.color), Color(p.color).copy(alpha = 0.65f))))
             .then(if (selected) Modifier.border(3.dp, Color.White, RoundedCornerShape(size / 4)) else Modifier),
         contentAlignment = Alignment.Center,
     ) {
-        Text(p.name.take(1).uppercase(), color = Color.White, fontSize = (size.value * 0.45f).sp, fontWeight = FontWeight.Bold)
+        if (icon != null) Icon(icon, null, tint = Color.White, modifier = Modifier.size(size * 0.55f))
+        else Text(p.name.take(1).uppercase(), color = Color.White, fontSize = (size.value * 0.45f).sp, fontWeight = FontWeight.Bold)
+        if (p.kids && size >= 48.dp) {
+            Text("KIDS", color = Color.White, fontSize = (size.value * 0.12f).sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = size * 0.06f)
+                    .clip(RoundedCornerShape(4.dp)).background(Color(0x66000000)).padding(horizontal = 4.dp))
+        }
     }
 }
 
@@ -123,6 +157,7 @@ fun ProfilePickerScreen() {
     val profiles by app.store.profiles.collectAsState()
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Profile?>(null) }
+    var unlocking by remember { mutableStateOf<Profile?>(null) }
 
     Column(
         Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -135,11 +170,14 @@ fun ProfilePickerScreen() {
                 val shape = RoundedCornerShape(24.dp)
                 Column(
                     Modifier.width(120.dp).focusRing(shape, 1.08f).clip(shape)
-                        .combinedClickable(onClick = { app.start(p) }, onLongClick = { editing = p }).padding(8.dp),
+                        .combinedClickable(onClick = { if (p.pin.isNotEmpty()) unlocking = p else app.start(p) }, onLongClick = { editing = p }).padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Avatar(p, 96.dp)
-                    Text(p.name, color = DS.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp))
+                    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (p.pin.isNotEmpty()) Icon(Icons.Default.Lock, "PIN", tint = DS.TextDim, modifier = Modifier.size(14.dp).padding(end = 2.dp))
+                        Text(p.name, color = DS.Text, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
             val shape = RoundedCornerShape(24.dp)
@@ -157,6 +195,7 @@ fun ProfilePickerScreen() {
     }
     if (adding) ProfileEditDialog(null, onDismiss = { adding = false }, onSaved = { adding = false })
     editing?.let { p -> ProfileEditDialog(p, onDismiss = { editing = null }, onSaved = { editing = null }) }
+    unlocking?.let { p -> PinDialog("Enter ${p.name}'s PIN", p.pin, onDismiss = { unlocking = null }) { unlocking = null; app.start(p) } }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -164,32 +203,100 @@ fun ProfilePickerScreen() {
 fun ProfileEditDialog(existing: Profile?, onDismiss: () -> Unit, onSaved: (Profile) -> Unit) {
     val app = DekStreamApp.instance
     val profiles by app.store.profiles.collectAsState()
+    val sources by app.store.sources.collectAsState()
     var name by remember { mutableStateOf(existing?.name ?: "") }
     var color by remember { mutableLongStateOf(existing?.color ?: Profile.Colors[profiles.size % Profile.Colors.size]) }
+    var avatar by remember { mutableStateOf(existing?.avatar ?: "") }
+    var pin by remember { mutableStateOf(existing?.pin ?: "") }
+    var kids by remember { mutableStateOf(existing?.kids ?: false) }
+    var allowed by remember { mutableStateOf(existing?.allowedSources?.toSet() ?: emptySet()) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var settingPin by remember { mutableStateOf(false) }
+    // Editing a kids profile (or turning one into a kids profile) needs the parent PIN.
+    var gatePassed by remember { mutableStateOf(existing?.kids != true) }
+    var askGate by remember { mutableStateOf(existing?.kids == true) }
+
+    if (askGate) {
+        ParentGate(reason = "Needed to change a kids profile.", onDismiss = { askGate = false; if (!gatePassed) onDismiss() }) {
+            askGate = false; gatePassed = true
+        }
+        return
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = DS.Surface,
+        containerColor = Appearance.palette.surface,
         title = { Text(if (existing == null) "New profile" else "Edit profile", color = DS.Text) },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Avatar(Profile(name = name.ifBlank { "?" }, color = color), 56.dp)
+                    Avatar(Profile(name = name.ifBlank { "?" }, color = color, avatar = avatar, kids = kids), 64.dp)
                     Spacer(Modifier.width(14.dp))
                     OutlinedTextField(
                         name, { name = it.take(20) }, singleLine = true, label = { Text("Name") },
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
                     )
                 }
-                FlowRow(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Color", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Profile.Colors.forEach { c ->
                         Box(
-                            Modifier.size(36.dp).focusRing(CircleShape).clip(CircleShape).background(Color(c))
+                            Modifier.size(34.dp).focusRing(CircleShape).clip(CircleShape).background(Color(c))
                                 .then(if (c == color) Modifier.border(3.dp, Color.White, CircleShape) else Modifier)
                                 .clickable { color = c },
                         )
                     }
                 }
+                Text("Avatar", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val shape = RoundedCornerShape(10.dp)
+                    Box(
+                        Modifier.size(40.dp).focusRing(shape).clip(shape).background(if (avatar.isEmpty()) DS.AccentSoft else DS.Surface2)
+                            .clickable { avatar = "" },
+                        contentAlignment = Alignment.Center,
+                    ) { Text(name.take(1).uppercase().ifBlank { "A" }, color = DS.Text, fontWeight = FontWeight.Bold) }
+                    AvatarIcons.forEach { (key, icon) ->
+                        Box(
+                            Modifier.size(40.dp).focusRing(shape).clip(shape).background(if (avatar == key) DS.AccentSoft else DS.Surface2)
+                                .clickable { avatar = key },
+                            contentAlignment = Alignment.Center,
+                        ) { Icon(icon, key, tint = DS.Text, modifier = Modifier.size(22.dp)) }
+                    }
+                }
+
+                Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Profile PIN", color = DS.Text, fontSize = 15.sp)
+                        Text(if (pin.isEmpty()) "Anyone can open this profile" else "PIN required to open", color = DS.TextDim, fontSize = 12.sp)
+                    }
+                    if (pin.isEmpty()) TextButton(onClick = { settingPin = true }) { Text("Set PIN", color = DS.Accent) }
+                    else TextButton(onClick = { pin = "" }) { Text("Remove", color = DS.Live) }
+                }
+
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Kids profile", color = DS.Text, fontSize = 15.sp)
+                        Text("Allowed categories, time limits and bedtime", color = DS.TextDim, fontSize = 12.sp)
+                    }
+                    Switch(
+                        checked = kids,
+                        onCheckedChange = { v -> if (gatePassed) kids = v else askGate = true },
+                        colors = SwitchDefaults.colors(checkedTrackColor = DS.Accent),
+                    )
+                }
+
+                if (sources.size > 1) {
+                    Text("Playlists this profile can see", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CategoryChip("All", allowed.isEmpty()) { allowed = emptySet() }
+                        sources.forEach { src ->
+                            CategoryChip(src.name, src.id in allowed) {
+                                allowed = if (src.id in allowed) allowed - src.id else allowed + src.id
+                            }
+                        }
+                    }
+                }
+
                 if (existing != null && profiles.size > 1) {
                     TextButton(onClick = { confirmDelete = true }, modifier = Modifier.padding(top = 12.dp)) {
                         Text("Delete profile", color = DS.Live)
@@ -201,8 +308,9 @@ fun ProfileEditDialog(existing: Profile?, onDismiss: () -> Unit, onSaved: (Profi
             TextButton(
                 enabled = name.isNotBlank(),
                 onClick = {
-                    val p = (existing ?: Profile(name = name.trim(), color = color, sourceId = app.store.sources.value.firstOrNull()?.id))
-                        .copy(name = name.trim(), color = color)
+                    val visible = sources.filter { allowed.isEmpty() || it.id in allowed }
+                    val base = existing ?: Profile(name = name.trim(), color = color, sourceId = visible.firstOrNull()?.id)
+                    val p = base.copy(name = name.trim(), color = color, avatar = avatar, pin = pin, kids = kids, allowedSources = allowed.toList())
                     app.store.saveProfile(p)
                     if (app.session?.profile?.id == p.id) app.start(p)
                     onSaved(p)
@@ -211,10 +319,11 @@ fun ProfileEditDialog(existing: Profile?, onDismiss: () -> Unit, onSaved: (Profi
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = DS.TextDim) } },
     )
+    if (settingPin) PinDialog("Choose a 4-digit PIN", null, onDismiss = { settingPin = false }) { pin = it; settingPin = false }
     if (confirmDelete && existing != null) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            containerColor = DS.Surface,
+            containerColor = Appearance.palette.surface,
             title = { Text("Delete ${existing.name}?", color = DS.Text) },
             text = { Text("Their favorites, watch progress and teams are removed from this device. Playlists stay.", color = DS.TextDim) },
             confirmButton = {
@@ -277,9 +386,71 @@ fun ProfileScreen(state: AppState) {
             }
         }
 
+        // Viewing time (everyone) — kids see their limit too.
+        SectionLabel("VIEWING · LAST 7 DAYS")
+        ViewingChart(session.settings)
+
+        if (session.profile.kids) {
+            val st = session.settings
+            Column(Modifier.fillMaxWidth().padding(top = 12.dp).clip(RoundedCornerShape(12.dp)).background(DS.Surface).padding(16.dp)) {
+                if (st.dailyLimitMin > 0) {
+                    val left = (st.dailyLimitMin + st.bonusToday - st.minutesToday()).coerceAtLeast(0)
+                    InfoLine("Time left today", "${left / 60}h ${left % 60}m")
+                }
+                if (st.bedtimeStart >= 0) InfoLine("Bedtime", "${fmtClock(st.bedtimeStart)} – ${fmtClock(st.bedtimeEnd)}")
+                Text("A parent can change these from their profile.", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+            return@Column
+        }
+
+        // Family: kids profiles at a glance
+        val allProfiles by app.store.profiles.collectAsState()
+        val kidsProfiles = allProfiles.filter { it.kids }
+        var gateFor by remember { mutableStateOf<Pair<String, String>?>(null) } // action, profileId
+        var tick by remember { mutableStateOf(0) }
+        if (kidsProfiles.isNotEmpty()) {
+            SectionLabel("FAMILY")
+            kidsProfiles.forEach { k ->
+                val ks = remember(k.id, tick) { com.dekstream.tv.data.ProfileSettings(app, k.id) }
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(DS.Surface).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Avatar(k, 44.dp)
+                    Column(Modifier.padding(horizontal = 12.dp).weight(1f)) {
+                        Text(k.name, color = DS.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        val mins = ks.minutesToday()
+                        val status = when (ks.lockReason()) {
+                            com.dekstream.tv.data.ProfileSettings.Lock.Paused -> "Paused"
+                            com.dekstream.tv.data.ProfileSettings.Lock.Bedtime -> "Bedtime"
+                            com.dekstream.tv.data.ProfileSettings.Lock.TimeUp -> "Out of time"
+                            null -> "Can watch"
+                        }
+                        Text("${mins / 60}h ${mins % 60}m today · $status", color = DS.TextDim, fontSize = 12.sp)
+                    }
+                    TextButton(onClick = { gateFor = (if (ks.paused) "resume" else "pause") to k.id }) {
+                        Text(if (ks.paused) "Resume" else "Pause now", color = if (ks.paused) DS.Accent else DS.Live)
+                    }
+                    TextButton(onClick = { gateFor = "rules" to k.id }) { Text("Rules", color = DS.Accent) }
+                }
+            }
+        }
+        gateFor?.let { (action, id) ->
+            ParentGate(reason = "Parent PIN needed.", onDismiss = { gateFor = null }) {
+                gateFor = null
+                val ks = com.dekstream.tv.data.ProfileSettings(app, id)
+                when (action) {
+                    "pause" -> ks.paused = true
+                    "resume" -> ks.paused = false
+                    "rules" -> state.push(Route.KidsRules(id))
+                }
+                tick++
+            }
+        }
+
         // Playlists
         SectionLabel("PLAYLISTS")
-        sources.forEach { s ->
+        sources.filter { session.profile.canSee(it.id) }.forEach { s ->
             val active = s.id == session.source.id
             val shape = RoundedCornerShape(12.dp)
             Row(
@@ -360,3 +531,34 @@ fun InfoLine(label: String, value: String) {
 }
 
 @Suppress("unused") private val unusedHeight = Modifier.height(0.dp)
+
+fun fmtClock(minutes: Int): String {
+    val h = minutes / 60; val m = minutes % 60
+    val ampm = if (h < 12) "AM" else "PM"
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    return "%d:%02d %s".format(h12, m, ampm)
+}
+
+/** Simple bar chart of minutes watched per day. */
+@Composable
+fun ViewingChart(st: com.dekstream.tv.data.ProfileSettings) {
+    val days = remember { st.last7Days() }
+    val max = (days.maxOfOrNull { it.second } ?: 0).coerceAtLeast(30)
+    val total = days.sumOf { it.second }
+    Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(DS.Surface).padding(16.dp)) {
+        Text("${total / 60}h ${total % 60}m this week", color = DS.Text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Row(Modifier.fillMaxWidth().height(110.dp).padding(top = 12.dp), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
+            days.forEachIndexed { i, (label, mins) ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom, modifier = Modifier.fillMaxHeight()) {
+                    Text(if (mins > 0) (if (mins >= 60) "${mins / 60}h" else "${mins}m") else "", color = DS.TextDim, fontSize = 10.sp)
+                    Box(
+                        Modifier.width(22.dp).height((70f * mins / max).coerceAtLeast(3f).dp)
+                            .clip(RoundedCornerShape(topStart = 5.dp, topEnd = 5.dp))
+                            .background(if (i == days.lastIndex) DS.Accent else DS.Accent.copy(alpha = 0.45f)),
+                    )
+                    Text(label, color = DS.TextDim, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+        }
+    }
+}

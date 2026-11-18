@@ -53,9 +53,19 @@ data class Profile(
     val name: String,
     val color: Long,
     val sourceId: String? = null,
+    /** Avatar icon key (see ui.AvatarIcons); "" = initial letter. */
+    val avatar: String = "",
+    /** Optional 4-digit PIN to open this profile. */
+    val pin: String = "",
+    val kids: Boolean = false,
+    /** Playlists this profile can see; empty = all. */
+    val allowedSources: List<String> = emptyList(),
 ) {
+    fun canSee(sourceId: String) = allowedSources.isEmpty() || sourceId in allowedSources
+
     fun toJson() = JSONObject().apply {
         put("id", id); put("name", name); put("color", color); put("source", sourceId ?: "")
+        put("avatar", avatar); put("pin", pin); put("kids", kids); put("sources", allowedSources.joinToString(","))
     }
 
     companion object {
@@ -65,6 +75,10 @@ data class Profile(
             name = o.optString("name", "Me"),
             color = o.optLong("color", Colors[0]),
             sourceId = o.optString("source").ifBlank { null },
+            avatar = o.optString("avatar"),
+            pin = o.optString("pin"),
+            kids = o.optBoolean("kids"),
+            allowedSources = o.optString("sources").split(',').filter { it.isNotBlank() },
         )
     }
 }
@@ -78,6 +92,11 @@ class Store(private val context: Context) {
 
     private val _profiles = MutableStateFlow(load("profiles") { Profile.fromJson(it) })
     val profiles: StateFlow<List<Profile>> = _profiles
+
+    /** Parent PIN guarding kids settings and locked channels. */
+    var parentPin: String
+        get() = sp.getString("parentPin", "") ?: ""
+        set(v) = sp.edit().putString("parentPin", v).apply()
 
     var lastProfileId: String?
         get() = sp.getString("lastProfile", null)

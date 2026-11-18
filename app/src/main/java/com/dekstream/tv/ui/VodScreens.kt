@@ -58,7 +58,10 @@ import com.dekstream.tv.data.Vod
 @Composable
 fun VodBrowseScreen(state: AppState, isSeries: Boolean) {
     val repo = DekStreamApp.instance.repo ?: return
-    val cats by rememberLoad(isSeries) { if (isSeries) repo.seriesCategories() else repo.vodCategories() }
+    val allow = kidsAllowed(if (isSeries) "s:" else "v:")
+    val cats by rememberLoad(isSeries) {
+        (if (isSeries) repo.seriesCategories() else repo.vodCategories()).filter { allow == null || it.id in allow }
+    }
     LoadView(cats) { list ->
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 0.dp, top = 8.dp, bottom = 24.dp)) {
             item {

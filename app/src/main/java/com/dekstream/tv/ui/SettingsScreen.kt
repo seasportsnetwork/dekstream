@@ -1,6 +1,13 @@
 package com.dekstream.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,10 +33,11 @@ import com.dekstream.tv.DekStreamApp
 import com.dekstream.tv.data.SourceType
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(state: AppState) {
     val app = DekStreamApp.instance
     val session = app.session ?: return
     var format by remember { mutableStateOf(app.prefs.liveFormat) }
+    var pinStep by remember { mutableStateOf(0) } // 1 = confirm old, 2 = choose new
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).widthIn(max = 640.dp)) {
         Text("Settings", color = DS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
@@ -47,6 +55,18 @@ fun SettingsScreen() {
             }
         }
 
+        SectionTitle("Look & family")
+        Card {
+            NavRow(Icons.Default.Palette, "Appearance", "Accent, background, selection style, transparency, guide background") {
+                state.push(Route.AppearanceSettings)
+            }
+            if (!session.profile.kids) {
+                val hasPin = app.store.parentPin.isNotEmpty()
+                NavRow(Icons.Default.Lock, if (hasPin) "Change parent PIN" else "Set a parent PIN",
+                    "Protects kids settings and locked channels") { pinStep = if (hasPin) 1 else 2 }
+            }
+        }
+
         SectionTitle("Tips")
         Card {
             Text("• Long-press a channel to add or remove it from Favorites.", color = DS.Text, fontSize = 14.sp)
@@ -61,9 +81,29 @@ fun SettingsScreen() {
             InfoLine("Version", BuildConfig.VERSION_NAME)
         }
     }
+    when (pinStep) {
+        1 -> PinDialog("Current parent PIN", app.store.parentPin, onDismiss = { pinStep = 0 }) { pinStep = 2 }
+        2 -> PinDialog("New parent PIN", null, onDismiss = { pinStep = 0 }) { app.store.parentPin = it; pinStep = 0 }
+    }
 }
 
 @Composable
 private fun Card(content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(DS.Surface).padding(16.dp)) { content() }
+}
+
+@Composable
+private fun NavRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 2.dp).focusRing(shape, 1.02f).clip(shape).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, null, tint = DS.Accent)
+        Column(Modifier.padding(start = 14.dp).weight(1f)) {
+            Text(title, color = DS.Text, fontSize = 15.sp)
+            Text(subtitle, color = DS.TextDim, fontSize = 12.sp)
+        }
+        Icon(Icons.Default.ChevronRight, null, tint = DS.TextDim)
+    }
 }
