@@ -265,7 +265,7 @@ private fun InfoBanner(req: PlayRequest, hasZap: Boolean) {
     val repo = DekStreamApp.instance.repo
     val ch = req.channel
     val epg by produceState<List<Program>>(emptyList(), ch?.streamId) {
-        if (ch != null && repo != null) value = repo.nowNext(ch.streamId)
+        if (ch != null && repo != null) value = repo.nowNext(ch)
     }
     val now = epg.firstOrNull { it.isLive() }
     val next = epg.firstOrNull { it.startMs > System.currentTimeMillis() }

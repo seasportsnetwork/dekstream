@@ -36,17 +36,17 @@ import androidx.compose.ui.unit.sp
  * Narrow screens (phone / tablet portrait): a bottom bar with the main tabs.
  */
 @Composable
-fun Shell(state: AppState, onSignOut: () -> Unit) {
+fun Shell(state: AppState) {
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
         val wide = maxWidth >= 720.dp
         if (wide) {
             Row(Modifier.fillMaxSize()) {
                 SideRail(state)
-                Box(Modifier.weight(1f).fillMaxHeight()) { TabContent(state, onSignOut) }
+                Box(Modifier.weight(1f).fillMaxHeight()) { TabContent(state) }
             }
         } else {
             Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f).fillMaxWidth()) { TabContent(state, onSignOut) }
+                Box(Modifier.weight(1f).fillMaxWidth()) { TabContent(state) }
                 BottomBar(state)
             }
         }
@@ -54,7 +54,7 @@ fun Shell(state: AppState, onSignOut: () -> Unit) {
 }
 
 @Composable
-private fun TabContent(state: AppState, onSignOut: () -> Unit) {
+private fun TabContent(state: AppState) {
     when (state.tab) {
         Tab.Home -> HomeScreen(state)
         Tab.Live -> LiveScreen(state)
@@ -64,7 +64,8 @@ private fun TabContent(state: AppState, onSignOut: () -> Unit) {
         Tab.Sports -> SportsScreen(state)
         Tab.Multiview -> MultiviewScreen()
         Tab.Search -> SearchScreen(state)
-        Tab.Settings -> SettingsScreen(onSignOut)
+        Tab.Profile -> ProfileScreen(state)
+        Tab.Settings -> SettingsScreen()
     }
 }
 
@@ -78,9 +79,8 @@ private fun SideRail(state: AppState) {
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 12.dp, vertical = 16.dp),
     ) {
-        Row(Modifier.padding(start = 8.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("Dek", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text("Stream", color = DS.Accent, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Row(Modifier.padding(start = 4.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+            BrandMark(30.dp, nameSize = 19)
         }
         Tab.entries.forEach { t ->
             val selected = state.tab == t

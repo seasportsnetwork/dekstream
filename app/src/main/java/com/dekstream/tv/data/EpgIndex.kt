@@ -28,18 +28,20 @@ class EpgIndex(private val http: OkHttpClient) {
     private var loadedAt = 0L
     private var loadedFor: String? = null
     @Volatile private var byChannel: Map<String, List<Entry>> = emptyMap()
+    /** Normalised channel display-name -> guide id, for playlists without tvg-id. */
+    @Volatile private var byName: Map<String, String> = emptyMap()
 
     private val _status = MutableStateFlow(Status.Idle)
     val status: StateFlow<Status> = _status
 
-    /** Loads (or reuses, if younger than 30 min) the guide for this account. */
-    suspend fun ensure(api: XtreamApi): Map<String, List<Entry>> = lock.withLock {
-        val key = api.account.base + api.account.username
+    /** Loads (or reuses, if younger than 30 min) the XMLTV guide at [url]. */
+    suspend fun ensure(key: String, url: String): Map<String, List<Entry>> = lock.withLock {
         val fresh = System.currentTimeMillis() - loadedAt < 30 * 60_000
         if (fresh && loadedFor == key && byChannel.isNotEmpty()) return byChannel
+        if (loadedFor != key) { byChannel = emptyMap(); byName = emptyMap() }
         _status.value = Status.Loading
         try {
-            byChannel = download(api)
+            byChannel = download(url)
             loadedAt = System.currentTimeMillis()
             loadedFor = key
             _status.value = Status.Ready
@@ -50,14 +52,24 @@ class EpgIndex(private val http: OkHttpClient) {
         byChannel
     }
 
-    fun programmesFor(epgId: String?): List<Entry> = epgId?.let { byChannel[it.lowercase()] }.orEmpty()
+    val isLoaded get() = byChannel.isNotEmpty()
 
-    fun nowOn(epgId: String?, at: Long = System.currentTimeMillis()): Entry? =
-        programmesFor(epgId).firstOrNull { at >= it.startMs && at < it.endMs }
+    fun programmesFor(c: Channel): List<Entry> {
+        c.epgChannelId?.lowercase()?.let { id -> byChannel[id]?.let { return it } }
+        val id = byName[normName(c.name)] ?: return emptyList()
+        return byChannel[id].orEmpty()
+    }
 
-    private suspend fun download(api: XtreamApi): Map<String, List<Entry>> = withContext(Dispatchers.IO) {
-        val a = api.account
-        val url = "${a.base}/xmltv.php?username=${a.username}&password=${a.password}"
+    fun nowOn(c: Channel, at: Long = System.currentTimeMillis()): Entry? =
+        programmesFor(c).firstOrNull { at >= it.startMs && at < it.endMs }
+
+    private fun normName(s: String) = s.lowercase()
+        .replace(Regex("\\b(hd|fhd|uhd|4k|sd|hevc|h265|backup|raw)\\b"), " ")
+        .replace(Regex("^[a-z]{2,3}\\s*[:|\\-]\\s*"), "")
+        .replace(Regex("[^a-z0-9]"), "")
+
+    private suspend fun download(url: String): Map<String, List<Entry>> = withContext(Dispatchers.IO) {
+        val names = HashMap<String, String>(8192)
         val req = Request.Builder().url(url).header("User-Agent", XtreamApi.USER_AGENT).build()
         val now = System.currentTimeMillis()
         val from = now - 4 * 3600_000L
@@ -79,6 +91,8 @@ class EpgIndex(private val http: OkHttpClient) {
             p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
             p.setInput(body.byteStream(), null)
 
+            var chanId: String? = null
+            var inName = false
             var inProg = false
             var keep = false
             var ch = ""; var start = 0L; var end = 0L
@@ -89,6 +103,8 @@ class EpgIndex(private val http: OkHttpClient) {
             while (ev != XmlPullParser.END_DOCUMENT) {
                 when (ev) {
                     XmlPullParser.START_TAG -> when (p.name) {
+                        "channel" -> chanId = p.getAttributeValue(null, "id")?.lowercase()
+                        "display-name" -> inName = chanId != null && !inProg
                         "programme" -> {
                             inProg = true
                             ch = (p.getAttributeValue(null, "channel") ?: "").lowercase()
@@ -100,11 +116,16 @@ class EpgIndex(private val http: OkHttpClient) {
                         "title" -> if (inProg) field = "title"
                         "desc" -> if (inProg) field = "desc"
                     }
-                    XmlPullParser.TEXT -> if (inProg && keep) when (field) {
+                    XmlPullParser.TEXT -> if (inName) {
+                        val n = normName(p.text ?: "")
+                        if (n.isNotEmpty()) names.putIfAbsent(n, chanId!!)
+                    } else if (inProg && keep) when (field) {
                         "title" -> title += p.text
                         "desc" -> if (desc.length < 300) desc += p.text
                     }
                     XmlPullParser.END_TAG -> when (p.name) {
+                        "display-name" -> inName = false
+                        "channel" -> chanId = null
                         "title", "desc" -> field = null
                         "programme" -> {
                             if (keep && title.isNotBlank()) {
@@ -117,6 +138,7 @@ class EpgIndex(private val http: OkHttpClient) {
                 ev = p.next()
             }
         }
+        byName = names
         out.mapValues { (_, l) -> l.sortedBy { it.startMs } }
     }
 }
