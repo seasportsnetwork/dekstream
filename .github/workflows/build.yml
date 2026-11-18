@@ -45,17 +45,20 @@ jobs:
           ./gradlew --no-daemon assembleRelease \
             -PappVersionName=1.0.${{ github.run_number }} \
             -PappVersionCode=${{ github.run_number }}
-          cp app/build/outputs/apk/release/app-release.apk DekStream.apk
+          cp app/build/outputs/apk/release/app-release.apk DekTV.apk
+          cp DekTV.apk DekStream.apk  # keeps the old download link working
 
       - uses: actions/upload-artifact@v4
         with:
-          name: DekStream
-          path: DekStream.apk
+          name: DekTV
+          path: DekTV.apk
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.0.${{ github.run_number }}
-          name: DekStream v1.0.${{ github.run_number }}
+          name: DekTV v1.0.${{ github.run_number }}
           make_latest: true
-          files: DekStream.apk
+          files: |
+            DekTV.apk
+            DekStream.apk
