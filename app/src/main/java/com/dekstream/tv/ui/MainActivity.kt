@@ -8,10 +8,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.dekstream.tv.DekStreamApp
 
@@ -29,11 +29,20 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Root() {
     val app = DekStreamApp.instance
-    var signedIn by remember { mutableStateOf(app.repo != null) }
-    if (!signedIn) {
-        LoginScreen(onSignedIn = { signedIn = true })
-        return
+    val profiles by app.store.profiles.collectAsState()
+    val session = app.session
+    val pending = app.pendingProfile
+
+    when {
+        profiles.isEmpty() -> FirstProfileScreen()
+        pending != null -> SourceEditorScreen(existing = null, firstRun = true, onDone = {}, onCancel = { app.switchProfile() })
+        session == null -> ProfilePickerScreen()
+        else -> key(session.key) { SignedIn() }
     }
+}
+
+@Composable
+private fun SignedIn() {
     val state = remember { AppState() }
     val top = state.stack.lastOrNull()
 
@@ -42,15 +51,13 @@ private fun Root() {
     }
 
     when (top) {
-        null -> Shell(state, onSignOut = {
-            app.signOut()
-            signedIn = false
-        })
+        null -> Shell(state)
         is Route.Player -> PlayerScreen(top.request, top.zapList, onExit = { state.pop() })
         is Route.MovieDetail -> MovieDetailScreen(top.vod, state)
         is Route.SeriesDetail -> SeriesDetailScreen(top.series, state)
         is Route.VodCategory -> VodCategoryScreen(top.category, top.isSeries, state)
         is Route.GameDetail -> GameDetailScreen(top.game, state)
         Route.SportsSettings -> SportsSettingsScreen(state)
+        is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
 }

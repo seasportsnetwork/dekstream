@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -43,15 +44,25 @@ fun HomeScreen(state: AppState) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(20.dp)) {
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Dek", color = DS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                Text("Stream", color = DS.Accent, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                BrandMark(38.dp, nameSize = 24)
+                Spacer(Modifier.weight(1f))
+                app.session?.let { s ->
+                    Row(
+                        Modifier.focusRing(RoundedCornerShape(12.dp)).clip(RoundedCornerShape(12.dp))
+                            .clickable { state.tab = Tab.Profile }.padding(6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(s.profile.name, color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(end = 8.dp))
+                        Avatar(s.profile, 34.dp)
+                    }
+                }
             }
         }
 
         // Shortcuts (mainly for the phone layout, where these tabs aren't in the bottom bar)
         item {
             Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                listOf(Tab.Search, Tab.Multiview, Tab.Settings).forEach { t ->
+                listOf(Tab.Search, Tab.Multiview, Tab.Profile, Tab.Settings).forEach { t ->
                     val shape = RoundedCornerShape(20.dp)
                     Row(
                         Modifier.focusRing(shape).clip(shape).background(DS.Surface)

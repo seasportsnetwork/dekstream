@@ -72,7 +72,7 @@ fun GameDetailScreen(initial: Game, state: AppState) {
     // Check every channel's guide (one xmltv download, cached 30 min), then rank.
     val matches by rememberLoad(initial.id) {
         val all = repo.allChannels()
-        val idx = runCatching { app.epg.ensure(repo.api); app.epg }.getOrNull()
+        val idx = repo.guideIndex()
         SportsRepo.matchChannels(initial, all, idx)
     }
 

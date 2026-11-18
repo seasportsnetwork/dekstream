@@ -1,6 +1,7 @@
 package com.dekstream.tv.ui
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CalendarViewWeek
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
@@ -31,6 +32,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
     Sports("Sports", Icons.Default.SportsFootball),
     Multiview("Multiview", Icons.Default.GridView),
     Search("Search", Icons.Default.Search),
+    Profile("Profile", Icons.Default.AccountCircle),
     Settings("Settings", Icons.Default.Settings),
 }
 
@@ -40,6 +42,8 @@ sealed interface Route {
     data class VodCategory(val category: Category, val isSeries: Boolean) : Route
     data class GameDetail(val game: Game) : Route
     data object SportsSettings : Route
+    /** Add a playlist (source == null) or edit one. */
+    data class EditSource(val source: com.dekstream.tv.data.Source?) : Route
     data class Player(val request: PlayRequest, val zapList: List<Channel> = emptyList()) : Route
 }
 

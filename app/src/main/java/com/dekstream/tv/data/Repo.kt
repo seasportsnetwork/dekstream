@@ -4,10 +4,13 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 
-/** Caching layer over [XtreamApi]. Everything is loaded lazily and kept in memory. */
-class Repo(val api: XtreamApi, private val prefs: Prefs) {
+/** Caching layer over whichever [Provider] the current profile uses. */
+class Repo(val provider: Provider, private val prefs: Prefs, private val epg: EpgIndex) {
+
+    val source: Source get() = provider.source
 
     private val lock = Mutex()
+    private val allLock = Mutex()
     private var liveCats: List<Category>? = null
     private var vodCats: List<Category>? = null
     private var seriesCats: List<Category>? = null
@@ -18,68 +21,68 @@ class Repo(val api: XtreamApi, private val prefs: Prefs) {
     private val epgShort = ConcurrentHashMap<Int, Pair<Long, List<Program>>>()
     private val epgFull = ConcurrentHashMap<Int, Pair<Long, List<Program>>>()
 
-    suspend fun liveCategories() = lock.withLock { liveCats ?: api.liveCategories().also { liveCats = it } }
-    suspend fun vodCategories() = lock.withLock { vodCats ?: api.vodCategories().also { vodCats = it } }
-    suspend fun seriesCategories() = lock.withLock { seriesCats ?: api.seriesCategories().also { seriesCats = it } }
+    suspend fun liveCategories() = lock.withLock { liveCats ?: provider.liveCategories().also { liveCats = it } }
+    suspend fun vodCategories() = lock.withLock { vodCats ?: provider.vodCategories().also { vodCats = it } }
+    suspend fun seriesCategories() = lock.withLock { seriesCats ?: provider.seriesCategories().also { seriesCats = it } }
 
     /** All live channels (one big call, cached). */
-    suspend fun allChannels(): List<Channel> {
-        allLive?.let { return it }
-        val list = api.liveStreams()
-        allLive = list
-        return list
+    suspend fun allChannels(): List<Channel> = allLock.withLock {
+        allLive ?: provider.allChannels().also { allLive = it }
     }
 
-    suspend fun channels(categoryId: String): List<Channel> =
-        allChannels().filter { it.categoryId == categoryId }
-
-    suspend fun channelById(id: Int): Channel? = allChannels().firstOrNull { it.streamId == id }
+    suspend fun channels(categoryId: String): List<Channel> = allChannels().filter { it.categoryId == categoryId }
 
     suspend fun vods(categoryId: String): List<Vod> =
-        vodByCat[categoryId] ?: api.vodStreams(categoryId).also { vodByCat[categoryId] = it }
+        vodByCat[categoryId] ?: provider.vods(categoryId).also { vodByCat[categoryId] = it }
 
     suspend fun series(categoryId: String): List<Series> =
-        seriesByCat[categoryId] ?: api.series(categoryId).also { seriesByCat[categoryId] = it }
+        seriesByCat[categoryId] ?: provider.series(categoryId).also { seriesByCat[categoryId] = it }
+
+    suspend fun vodInfo(v: Vod) = provider.vodInfo(v)
+    suspend fun seriesInfo(s: Series) = provider.seriesInfo(s)
 
     /** Now/next for a channel, cached 5 minutes. */
-    suspend fun nowNext(streamId: Int): List<Program> {
+    suspend fun nowNext(c: Channel): List<Program> {
         val now = System.currentTimeMillis()
-        epgShort[streamId]?.let { (t, l) -> if (now - t < 5 * 60_000) return l }
-        val l = runCatching { api.shortEpg(streamId, 3) }.getOrDefault(emptyList())
-            .filter { it.endMs > now }
-        epgShort[streamId] = now to l
+        epgShort[c.streamId]?.let { (t, l) -> if (now - t < 5 * 60_000) return l }
+        val l = runCatching { provider.shortEpg(c) }.getOrDefault(emptyList()).filter { it.endMs > now }
+        epgShort[c.streamId] = now to l
         return l
     }
 
     /** Full EPG (past + future), cached 30 minutes. */
-    suspend fun fullEpg(streamId: Int): List<Program> {
+    suspend fun fullEpg(c: Channel): List<Program> {
         val now = System.currentTimeMillis()
-        epgFull[streamId]?.let { (t, l) -> if (now - t < 30 * 60_000) return l }
-        val l = runCatching { api.fullEpg(streamId) }.getOrDefault(emptyList())
-        epgFull[streamId] = now to l
+        epgFull[c.streamId]?.let { (t, l) -> if (now - t < 30 * 60_000) return l }
+        val l = runCatching { provider.fullEpg(c) }.getOrDefault(emptyList())
+        epgFull[c.streamId] = now to l
         return l
     }
 
+    /** The whole-guide index (XMLTV) for sports matching, when this source has one. */
+    suspend fun guideIndex(): EpgIndex? {
+        if (provider is M3uProvider) allChannels() // playlist header may carry the guide URL
+        val url = provider.xmltvUrl() ?: return null
+        return runCatching { epg.ensure(provider.cacheKey, url); epg }.getOrNull()
+    }
+
     fun liveRequest(c: Channel) = PlayRequest(
-        url = api.liveUrl(c.streamId, prefs.liveFormat),
+        url = provider.liveUrl(c, prefs.liveFormat),
         title = c.name,
         isLive = true,
         poster = c.icon,
         channel = c,
     )
 
-    fun catchupRequest(c: Channel, p: Program) = PlayRequest(
-        url = api.catchupUrl(c.streamId, p, prefs.serverTimezone),
-        title = p.title,
-        subtitle = "${c.name} · Catch-up",
-        isLive = false,
-        poster = c.icon,
-    )
+    fun catchupRequest(c: Channel, p: Program): PlayRequest? {
+        val url = provider.catchupUrl(c, p, prefs.serverTimezone) ?: return null
+        return PlayRequest(url = url, title = p.title, subtitle = "${c.name} · Catch-up", isLive = false, poster = c.icon)
+    }
 
     fun vodRequest(v: Vod): PlayRequest {
         val key = "vod:${v.streamId}"
         return PlayRequest(
-            url = api.vodUrl(v),
+            url = provider.vodUrl(v),
             title = v.name,
             isLive = false,
             progressKey = key,
@@ -91,7 +94,7 @@ class Repo(val api: XtreamApi, private val prefs: Prefs) {
     fun episodeRequest(s: Series, e: Episode): PlayRequest {
         val key = "ep:${e.id}"
         return PlayRequest(
-            url = api.episodeUrl(e),
+            url = provider.episodeUrl(e),
             title = s.name,
             subtitle = "S${e.season} E${e.episodeNum} · ${e.title}",
             isLive = false,
@@ -101,7 +104,6 @@ class Repo(val api: XtreamApi, private val prefs: Prefs) {
         )
     }
 
-    /** Search across live channels plus any VOD/series categories already loaded. */
     suspend fun searchChannels(q: String): List<Channel> {
         val n = q.trim().lowercase()
         if (n.length < 2) return emptyList()

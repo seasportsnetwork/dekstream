@@ -199,7 +199,7 @@ class SportsRepo(private val http: OkHttpClient) {
 
             val out = ArrayList<ChannelMatch>()
             for (c in channels) {
-                val prog = epg?.nowOn(c.epgChannelId, at)
+                val prog = epg?.nowOn(c, at)
                 var score = 0
                 var confirmed = false
                 if (prog != null) {

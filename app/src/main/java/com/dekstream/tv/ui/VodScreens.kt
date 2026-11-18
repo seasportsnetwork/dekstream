@@ -171,7 +171,7 @@ private fun Hero(image: String?, content: @Composable () -> Unit) {
 fun MovieDetailScreen(v: Vod, state: AppState) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
-    val info by rememberLoad(v.streamId) { repo.api.vodInfo(v.streamId) }
+    val info by rememberLoad(v.streamId) { repo.vodInfo(v) }
     val progress by app.prefs.progress.collectAsState()
     val resume = progress["vod:${v.streamId}"]
     BackHandler { state.pop() }
@@ -220,7 +220,7 @@ fun MovieDetailScreen(v: Vod, state: AppState) {
 fun SeriesDetailScreen(s: Series, state: AppState) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
-    val info by rememberLoad(s.seriesId) { repo.api.seriesInfo(s.seriesId) }
+    val info by rememberLoad(s.seriesId) { repo.seriesInfo(s) }
     val progress by app.prefs.progress.collectAsState()
     var season by rememberSaveable { mutableIntStateOf(-1) }
     BackHandler { state.pop() }

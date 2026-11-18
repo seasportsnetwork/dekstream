@@ -101,7 +101,7 @@ fun SportsScreen(state: AppState) {
 
     LaunchedEffect(Unit) { while (true) { delay(60_000); refresh++ } }
     // Start fetching the full guide in the background so game pages open fast.
-    LaunchedEffect(Unit) { app.repo?.let { r -> runCatching { app.epg.ensure(r.api) } } }
+    LaunchedEffect(Unit) { app.repo?.let { r -> runCatching { r.guideIndex() } } }
 
     val mine by rememberLoad(favs, refresh) { app.sports.favoriteGames(favs) }
     val boards by rememberLoad(leagueKeys, refresh) {

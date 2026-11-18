@@ -6,24 +6,14 @@ import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 import org.json.JSONObject
 
-/** Small local store: account, favourites, resume points, settings. */
-class Prefs(context: Context) {
-    private val sp = context.getSharedPreferences("dekstream", Context.MODE_PRIVATE)
-
-    // --- Account ---
-    var account: Account?
-        get() {
-            val server = sp.getString("server", null) ?: return null
-            val user = sp.getString("user", null) ?: return null
-            val pass = sp.getString("pass", null) ?: return null
-            return Account(server, user, pass)
-        }
-        set(v) {
-            sp.edit().apply {
-                if (v == null) { remove("server"); remove("user"); remove("pass") }
-                else { putString("server", v.server); putString("user", v.username); putString("pass", v.password) }
-            }.apply()
-        }
+/**
+ * Per-profile local store.
+ * `sp` = this profile + this playlist (favourites, recents, resume points, stream settings).
+ * `pp` = this profile across playlists (sports leagues, favourite teams).
+ */
+class Prefs(context: Context, profileId: String, sourceId: String) {
+    private val sp = context.getSharedPreferences("ds_${profileId}_$sourceId", Context.MODE_PRIVATE)
+    private val pp = context.getSharedPreferences("dsp_$profileId", Context.MODE_PRIVATE)
 
     var serverTimezone: String?
         get() = sp.getString("tz", null)
@@ -37,7 +27,7 @@ class Prefs(context: Context) {
 
     // --- Sports ---
     private val _sportLeagues = MutableStateFlow(
-        (sp.getString("sportLeagues", null) ?: "nfl,nba,mlb,nhl,cfb").split(',').filter { it.isNotBlank() }
+        (pp.getString("sportLeagues", null) ?: "nfl,nba,mlb,nhl,cfb").split(',').filter { it.isNotBlank() }
     )
     /** League keys shown on the Sports tab, in display order. */
     val sportLeagues: StateFlow<List<String>> = _sportLeagues
@@ -46,7 +36,7 @@ class Prefs(context: Context) {
         val l = _sportLeagues.value.toMutableList()
         if (!l.remove(key)) l.add(key)
         _sportLeagues.value = l
-        sp.edit().putString("sportLeagues", l.joinToString(",")).apply()
+        pp.edit().putString("sportLeagues", l.joinToString(",")).apply()
     }
 
     private val _favTeams = MutableStateFlow(loadFavTeams())
@@ -64,11 +54,11 @@ class Prefs(context: Context) {
                 put("l", f.leagueKey); put("id", f.teamId); put("n", f.name); put("a", f.abbr); put("logo", f.logo ?: "")
             })
         }
-        sp.edit().putString("favTeams", arr.toString()).apply()
+        pp.edit().putString("favTeams", arr.toString()).apply()
     }
 
     private fun loadFavTeams(): List<FavTeam> {
-        val raw = sp.getString("favTeams", null)
+        val raw = pp.getString("favTeams", null)
             ?: return listOf(
                 FavTeam("nfl", "26", "Seattle Seahawks", "SEA", "https://a.espncdn.com/i/teamlogos/nfl/500/sea.png"),
                 FavTeam("nba", "13", "Los Angeles Lakers", "LAL", "https://a.espncdn.com/i/teamlogos/nba/500/lal.png"),
@@ -172,9 +162,8 @@ class Prefs(context: Context) {
     private fun saveIntList(key: String, l: List<Int>) =
         sp.edit().putString(key, l.joinToString(",")).apply()
 
-    fun clearAll() {
-        sp.edit().clear().apply()
-        _favorites.value = emptySet(); _recent.value = emptyList(); _progress.value = emptyMap()
-        _favTeams.value = loadFavTeams(); _sportLeagues.value = listOf("nfl", "nba", "mlb", "nhl", "cfb")
+    fun clearWatchHistory() {
+        sp.edit().remove("recent").remove("progress").apply()
+        _recent.value = emptyList(); _progress.value = emptyMap()
     }
 }

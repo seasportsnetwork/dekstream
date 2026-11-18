@@ -161,7 +161,7 @@ fun GuideScreen(state: AppState) {
                     }) { Text("Watch live", color = DS.Accent) }
                     canCatchUp -> TextButton(onClick = {
                         picked = null
-                        state.play(repo.catchupRequest(c, p))
+                        repo.catchupRequest(c, p)?.let { state.play(it) }
                     }) { Text("Watch from start", color = DS.Accent) }
                     else -> {}
                 }
@@ -185,7 +185,7 @@ private fun GuideRow(
 ) {
     val repo = DekStreamApp.instance.repo ?: return
     val programs by produceState<List<Program>?>(null, c.streamId) {
-        value = repo.fullEpg(c.streamId).filter { it.endMs > windowStart && it.startMs < windowEnd }
+        value = repo.fullEpg(c).filter { it.endMs > windowStart && it.startMs < windowEnd }
     }
     val density = LocalDensity.current
     val now = System.currentTimeMillis()

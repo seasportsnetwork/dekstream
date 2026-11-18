@@ -29,6 +29,11 @@ data class Channel(
     val epgChannelId: String?,
     val hasArchive: Boolean,
     val archiveDays: Int,
+    /** Direct stream URL (M3U) or portal command (Stalker); null for Xtream (built from the id). */
+    val url: String? = null,
+    /** M3U catch-up: "default", "append", "shift", "flussonic"... */
+    val catchupType: String? = null,
+    val catchupSource: String? = null,
 )
 
 data class Vod(
@@ -38,6 +43,7 @@ data class Vod(
     val categoryId: String,
     val ext: String,
     val rating: String?,
+    val url: String? = null,
 )
 
 data class VodInfo(
@@ -71,6 +77,7 @@ data class Episode(
     val plot: String?,
     val image: String?,
     val duration: String?,
+    val url: String? = null,
 )
 
 data class SeriesInfo(
