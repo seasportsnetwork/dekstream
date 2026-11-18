@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#0B0D12" android:pathData="M0,0h320v180h-320z" />
+    <path
+        android:fillColor="#E50914"
+        android:pathData="M40,60h70a8,8 0 0 1 8,8v40a8,8 0 0 1 -8,8h-70a8,8 0 0 1 -8,-8v-40a8,8 0 0 1 8,-8z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M66,74l20,14l-20,14z" />
+    <!-- "DEKFLIX" bar wordmark (simple blocks) -->
+    <path android:fillColor="#FFFFFF" android:pathData="M140,78h140v8h-140z" />
+    <path android:fillColor="#9AA3B2" android:pathData="M140,94h96v6h-96z" />
+</vector>
