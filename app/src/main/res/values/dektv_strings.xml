@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- DekTV: upstream OwnTV strings that mention the app by name, renamed. -->
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="UnusedResources,MissingTranslation">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2" tools:ignore="UnusedResources,MissingTranslation">
     <string name="common_own_tv_user">DekTV User</string>
     <string name="content_exit_owntv">Exit DekTV?</string>
     <string name="content_storage_folder_fallback">Your download folder isn\'t available right now, so downloads are being saved to DekTV\'s own folder until it\'s back.</string>
