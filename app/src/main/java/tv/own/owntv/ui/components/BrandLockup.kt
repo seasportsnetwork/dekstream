@@ -95,8 +95,8 @@ fun Wordmark(width: Dp, modifier: Modifier = Modifier, tv: Color = stageAccent.a
     // DekTV wordmark: "Dek" in [own], "TV" in DekTV red, sized to [width].
     val fontSize = (width.value * 0.34f).sp
     Row(modifier.width(width), verticalAlignment = Alignment.CenterVertically) {
-        androidx.compose.foundation.text.BasicText("Dek", style = androidx.compose.ui.text.TextStyle(color = own, fontSize = fontSize, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), maxLines = 1)
-        androidx.compose.foundation.text.BasicText("TV", style = androidx.compose.ui.text.TextStyle(color = DekTvRed, fontSize = fontSize, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), maxLines = 1)
+        androidx.compose.foundation.text.BasicText(androidx.compose.ui.res.stringResource(R.string.dektv_wordmark_dek), style = androidx.compose.ui.text.TextStyle(color = own, fontSize = fontSize, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), maxLines = 1)
+        androidx.compose.foundation.text.BasicText(androidx.compose.ui.res.stringResource(R.string.dektv_wordmark_tv), style = androidx.compose.ui.text.TextStyle(color = DekTvRed, fontSize = fontSize, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold), maxLines = 1)
     }
 }
 
