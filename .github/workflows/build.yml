@@ -43,12 +43,13 @@ jobs:
 
       - name: Build release APK (arm: Shield, Android TV, Fire TV)
         env:
-          VERSION_NAME: 2.0.${{ github.run_number }}
-          VERSION_CODE: ${{ 20000 + github.run_number }}
+          RUN_NUMBER: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           KEY_ALIAS: dekflix
           KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
+          export VERSION_NAME="2.0.$RUN_NUMBER"
+          export VERSION_CODE=$((20000 + RUN_NUMBER))
           chmod +x ./gradlew
           ./gradlew --no-daemon assembleStandardRelease --stacktrace
           SRC=$(ls app/build/outputs/apk/standard/release/*.apk | head -n1)
