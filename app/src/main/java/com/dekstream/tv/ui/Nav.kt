@@ -46,7 +46,7 @@ sealed interface Route {
     data object AppearanceSettings : Route
     data object ChannelManager : Route
     /** Full-screen multiview pre-filled with channels (e.g. from Sports). */
-    data class Multiview(val channels: List<Channel>) : Route
+    data class Multiview(val channels: List<Channel>, val games: List<Game> = emptyList()) : Route
     /** Add a playlist (source == null) or edit one. */
     data class EditSource(val source: com.dekstream.tv.data.Source?) : Route
     data class Player(val request: PlayRequest, val zapList: List<Channel> = emptyList()) : Route
@@ -59,6 +59,11 @@ class AppState {
 
     fun push(r: Route) { stack.add(r) }
     fun pop(): Boolean = if (stack.isNotEmpty()) { stack.removeAt(stack.lastIndex); true } else false
+
+    /** Plays over the current player instead of stacking another one. */
+    fun playReplacing(req: PlayRequest, zapList: List<Channel> = emptyList()) {
+        if (stack.lastOrNull() is Route.Player) stack[stack.lastIndex] = Route.Player(req, zapList) else play(req, zapList)
+    }
 
     /** A locked channel waiting for the parent PIN. */
     var lockedPending by mutableStateOf<Route.Player?>(null)

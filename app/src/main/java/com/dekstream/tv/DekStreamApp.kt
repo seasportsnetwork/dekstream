@@ -41,6 +41,8 @@ class DekStreamApp : Application() {
         private set
     lateinit var reminders: com.dekstream.tv.data.Reminders
         private set
+    lateinit var health: com.dekstream.tv.data.StreamHealth
+        private set
 
     /** Channel to open once signed in (from a reminder notification). */
     var pendingPlayStream by mutableStateOf<Int?>(null)
@@ -54,6 +56,11 @@ class DekStreamApp : Application() {
     /** Profile picked but it has no playlist yet. */
     var pendingProfile by mutableStateOf<Profile?>(null)
         private set
+
+    /** Current sports heads-up (shown over every screen). */
+    var alert by mutableStateOf<com.dekstream.tv.ui.SportsAlert?>(null)
+    /** Set by the player when OK is pressed while an alert is showing. */
+    var alertWatchRequested by mutableStateOf(false)
 
     /** Set while the full-screen player is open (for auto picture-in-picture). */
     var playerActive by mutableStateOf(false)
@@ -75,6 +82,7 @@ class DekStreamApp : Application() {
         sports = SportsRepo(http)
         epg = EpgIndex(http, java.io.File(cacheDir, "guide").apply { mkdirs() })
         reminders = com.dekstream.tv.data.Reminders(this)
+        health = com.dekstream.tv.data.StreamHealth(this)
         com.dekstream.tv.data.Reminders.ensureChannel(this)
         // Go straight in when there's only one profile.
         store.profiles.value.singleOrNull()?.let { start(it) }

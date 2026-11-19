@@ -63,6 +63,37 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
 
     suspend fun channels(categoryId: String): List<Channel> = allChannels().filter { it.categoryId == categoryId }
 
+    /**
+     * Backup feeds for a live channel, best first: other feeds of the same channel (same guide id or
+     * same name once region/quality tags are removed), then channels showing the same programme now.
+     */
+    suspend fun alternatesFor(c: Channel, health: StreamHealth): List<Channel> {
+        val all = allChannels()
+        val base = StreamHealth.baseName(c.name)
+        val epgId = c.epgChannelId?.lowercase()
+        val sameChannel = all.filter { o ->
+            o.streamId != c.streamId && (
+                (epgId != null && o.epgChannelId?.lowercase() == epgId) ||
+                    (base.length >= 3 && StreamHealth.baseName(o.name) == base)
+                )
+        }
+        // Same programme on another channel (e.g. a simulcast), from the whole guide if it's loaded.
+        val sameShow = run {
+            val idx = epg.takeIf { it.isLoaded } ?: return@run emptyList()
+            val now = idx.nowOn(c)?.title?.lowercase()?.trim() ?: return@run emptyList()
+            if (now.length < 4) return@run emptyList()
+            all.asSequence().filter { o -> o.streamId != c.streamId && o !in sameChannel }
+                .filter { o -> idx.nowOn(o)?.title?.lowercase()?.trim() == now }
+                .take(10).toList()
+        }
+        fun quality(n: String): Int {
+            val l = n.lowercase()
+            return when { "4k" in l || "uhd" in l -> 3; "fhd" in l || "1080" in l -> 2; " hd" in " $l" -> 1; else -> 0 }
+        }
+        return sameChannel.sortedWith(compareByDescending<Channel> { health.score(it.streamId) }.thenByDescending { quality(it.name) }) +
+            sameShow.sortedByDescending { health.score(it.streamId) }
+    }
+
     /** Forget cached guide data after a guide match changes. */
     fun clearEpgCache() { epgShort.clear(); epgFull.clear() }
 

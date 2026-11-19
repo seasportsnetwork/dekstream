@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.dekstream.tv.DekStreamApp
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -115,6 +116,13 @@ private fun SignedIn() {
         if (!state.pop()) state.tab = Tab.Home
     }
 
+    // Sports heads-ups over every screen.
+    SportsAlertWatcher()
+    val alertScope = androidx.compose.runtime.rememberCoroutineScope()
+    LaunchedEffect(app.alertWatchRequested) {
+        if (app.alertWatchRequested) { app.alertWatchRequested = false; app.alert?.let { watchAlert(state, it) } }
+    }
+
     state.lockedPending?.let { p ->
         ParentGate(requireSetup = false, reason = "${p.request.title} is locked.", onDismiss = { state.lockedPending = null }) {
             state.lockedPending = null
@@ -122,6 +130,7 @@ private fun SignedIn() {
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     when (top) {
         null -> Shell(state)
         is Route.Player -> PlayerScreen(top.request, top.zapList, onExit = { state.pop() })
@@ -130,11 +139,13 @@ private fun SignedIn() {
         is Route.VodCategory -> VodCategoryScreen(top.category, top.isSeries, state)
         is Route.GameDetail -> GameDetailScreen(top.game, state)
         Route.SportsSettings -> SportsSettingsScreen(state)
-        is Route.Multiview -> MultiviewScreen(top.channels, onExit = { state.pop() })
+        is Route.Multiview -> MultiviewScreen(top.channels, top.games, onExit = { state.pop() })
         is Route.KidsRules -> KidsRulesScreen(top.profileId, state)
         Route.AppearanceSettings -> AppearanceScreen(state)
         Route.ChannelManager -> ChannelManagerScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
+    }
+    SportsAlertCard(state) { a -> alertScope.launch { watchAlert(state, a) } }
     }
 }
 

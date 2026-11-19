@@ -152,11 +152,11 @@ fun SportsScreen(state: AppState) {
         scope.launch {
             val chans = r.allChannels()
             val idx = r.guideIndex()
-            val picks = selected.mapNotNull { g -> SportsRepo.matchChannels(g, chans, idx).firstOrNull()?.channel }
+            val pairs = selected.mapNotNull { g -> SportsRepo.matchChannels(g, chans, idx).firstOrNull()?.channel?.let { it to g } }
             launching = false
-            if (picks.isNotEmpty()) {
+            if (pairs.isNotEmpty()) {
                 selecting = false; selected.clear()
-                state.push(Route.Multiview(picks))
+                state.push(Route.Multiview(pairs.map { it.first }, pairs.map { it.second }))
             }
         }
     }

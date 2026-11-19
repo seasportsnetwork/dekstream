@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.History
@@ -151,6 +152,13 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     var current by remember { mutableStateOf(request) }
     var error by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(true) }
+    // Self-healing: errors on this feed, whether it has started, feeds already tried, on-screen notice.
+    var errorsHere by remember { mutableIntStateOf(0) }
+    var started by remember { mutableStateOf(false) }
+    var loadStartedAt by remember { mutableLongStateOf(0L) }
+    val tried = remember { mutableSetOf<Int>() }
+    var notice by remember { mutableStateOf<String?>(null) }
+    var failoverRequest by remember { mutableStateOf<String?>(null) }
     var playing by remember { mutableStateOf(true) }
     var controls by remember { mutableStateOf(true) }
     var touch by remember { mutableIntStateOf(0) }         // bump to keep controls up
@@ -200,13 +208,20 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         val l = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
                 buffering = state == Player.STATE_BUFFERING
-                if (state == Player.STATE_READY) error = null
+                if (state == Player.STATE_READY) {
+                    error = null
+                    val ch = current.channel
+                    if (!started && current.isLive && ch != null) app.health.recordStart(ch.streamId, System.currentTimeMillis() - loadStartedAt)
+                    started = true
+                }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying || player.playWhenReady }
             override fun onPlayerError(e: PlaybackException) {
                 error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
                 if (current.isLive) {
-                    scope.launch {
+                    errorsHere++
+                    if (errorsHere >= 2) failoverRequest = "stopped working"
+                    else scope.launch {
                         delay(2_000)
                         player.seekToDefaultPosition(); player.prepare(); player.play()
                     }
@@ -220,12 +235,41 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     // Load whenever the item changes (zapping, start over, back to live).
     LaunchedEffect(current.url) {
         error = null
+        errorsHere = 0; started = false; loadStartedAt = System.currentTimeMillis()
         val url = runCatching { repo?.provider?.resolve(current.url) ?: current.url }.getOrDefault(current.url)
         player.setMediaItem(MediaItem.fromUri(url), current.startPositionMs)
         player.prepare()
         player.playWhenReady = true
         touch++
     }
+
+    // ---- Self-healing streams ----
+    fun failover(reason: String) {
+        val ch = current.channel ?: return
+        val r = repo ?: return
+        if (!current.isLive) return
+        app.health.recordFailure(ch.streamId)
+        tried += ch.streamId
+        scope.launch {
+            val next = runCatching { r.alternatesFor(ch, app.health) }.getOrDefault(emptyList())
+                .firstOrNull { it.streamId !in tried && app.session?.prefs?.isChannelLocked(it) != true }
+            if (next != null) {
+                notice = "${ch.name} $reason · switched to ${next.name}"
+                current = r.liveRequest(next)
+            } else {
+                notice = "${ch.name} $reason and no backup feed was found"
+            }
+        }
+    }
+    LaunchedEffect(failoverRequest) { failoverRequest?.let { failover(it); failoverRequest = null } }
+    // Frozen for 10 s after it was playing, or never started within 15 s: try a backup feed.
+    LaunchedEffect(buffering, current.url, started) {
+        if (current.isLive && buffering && started) { delay(10_000); if (buffering) failover("froze") }
+    }
+    LaunchedEffect(current.url) {
+        if (current.isLive) { delay(15_000); if (!started) failover("wouldn't start") }
+    }
+    LaunchedEffect(notice) { if (notice != null) { delay(6_000); notice = null } }
 
     // Position ticker for the seek bar and live-edge offset.
     LaunchedEffect(player) {
@@ -269,6 +313,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     fun switchTo(c: Channel) {
         val r = repo ?: return
         app.prefs.markChannelWatched(c.streamId)
+        tried.clear()
         current = r.liveRequest(c)
         showChannels = false
     }
@@ -310,6 +355,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
 
     BackHandler {
         when {
+            app.alert != null -> app.alert = null
             showOptions -> showOptions = false
             showChannels -> showChannels = false
             controls && !pip -> controls = false
@@ -349,6 +395,11 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                     KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(1); return@onPreviewKeyEvent true }
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { player.seekForward(); return@onPreviewKeyEvent true }
                     KeyEvent.KEYCODE_MEDIA_REWIND -> { player.seekBack(); return@onPreviewKeyEvent true }
+                }
+                // A sports alert is showing: OK watches that game.
+                if (app.alert != null && !showOptions && !showChannels &&
+                    (k.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || k.keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    app.alertWatchRequested = true; return@onPreviewKeyEvent true
                 }
                 if (controls || showOptions || showChannels) return@onPreviewKeyEvent false
                 // Controls hidden: remote shortcuts.
@@ -401,6 +452,17 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                 modifier = Modifier.align(Alignment.TopEnd).padding(32.dp).clip(RoundedCornerShape(14.dp))
                     .background(Color(0xCC000000)).padding(horizontal = 22.dp, vertical = 8.dp),
             )
+        }
+
+        // Self-healing notice
+        AnimatedVisibility(notice != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)) {
+            Row(
+                Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0xE6151922)).padding(horizontal = 18.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.AutoFixHigh, null, tint = DS.Accent, modifier = Modifier.size(18.dp))
+                Text("  " + (notice ?: ""), color = Color.White, fontSize = 14.sp)
+            }
         }
 
         // ---------- Controls overlay ----------
