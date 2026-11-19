@@ -139,7 +139,7 @@ fun CategoryItem(name: String, selected: Boolean, onLongClick: (() -> Unit)? = n
             .focusRing(shape, 1.02f)
             .clip(shape)
             .background(if (selected) DS.AccentSoft else DS.Bg)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .tvClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         color = if (selected) DS.Text else DS.TextDim,
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
@@ -159,7 +159,7 @@ fun CategoryChip(name: String, selected: Boolean, onLongClick: (() -> Unit)? = n
             .focusRing(shape)
             .clip(shape)
             .background(if (selected) DS.Accent else DS.Surface)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .tvClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         color = DS.Text,
         fontSize = 13.sp,

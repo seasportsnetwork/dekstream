@@ -115,7 +115,7 @@ fun PosterCard(
                 .focusRing(shape)
                 .clip(shape)
                 .background(DS.Surface2)
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+                .tvClickable(onClick = onClick, onLongClick = onLongClick),
         ) {
             if (image != null) {
                 AsyncImage(
@@ -204,7 +204,7 @@ fun ChannelRowItem(
             .focusRing(shape, 1.02f)
             .clip(shape)
             .background(DS.Surface)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .tvClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

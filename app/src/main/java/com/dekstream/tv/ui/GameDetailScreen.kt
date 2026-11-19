@@ -238,7 +238,7 @@ private fun MatchRow(m: ChannelMatch, isPinned: Boolean, onPin: () -> Unit, onCl
     val now = System.currentTimeMillis()
     Row(
         Modifier.fillMaxWidth().padding(vertical = 4.dp).focusRing(shape, 1.015f).clip(shape).background(DS.Surface)
-            .combinedClickable(onClick = onClick, onLongClick = onPin).padding(12.dp),
+            .tvClickable(onClick = onClick, onLongClick = onPin).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {

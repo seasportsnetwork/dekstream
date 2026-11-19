@@ -470,7 +470,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                     Row(
                         Modifier.fillMaxWidth().padding(top = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         if (current.isLive && zapList.size > 1) CtrlButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Channels") { showChannels = true }
                         CtrlButton(Icons.Default.Replay10, "Back 10 seconds") { player.seekBack(); touch++ }
@@ -526,18 +526,24 @@ fun minutesLeft(p: Program): String {
 @Composable
 private fun CtrlButton(icon: ImageVector, label: String, big: Boolean = false, focus: FocusRequester? = null, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val size = if (big) 64.dp else 48.dp
+    val size = if (big) 50.dp else 38.dp
     Box(
         Modifier
             .size(size)
             .then(if (focus != null) Modifier.focusRequester(focus) else Modifier)
             .onFocusChanged { focused = it.isFocused }
             .clip(CircleShape)
-            .background(if (focused) Color.White else if (big) Color(0x33FFFFFF) else Color(0x22FFFFFF))
+            .background(
+                when {
+                    focused -> Color.White
+                    big -> Color.White.copy(alpha = 0.16f)
+                    else -> Color.Transparent
+                }
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, label, tint = if (focused) Color.Black else Color.White, modifier = Modifier.size(if (big) 34.dp else 24.dp))
+        Icon(icon, label, tint = if (focused) Color.Black else Color.White.copy(alpha = 0.92f), modifier = Modifier.size(if (big) 28.dp else 22.dp))
     }
 }
 
@@ -545,12 +551,12 @@ private fun CtrlButton(icon: ImageVector, label: String, big: Boolean = false, f
 private fun PillButton(icon: ImageVector, label: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Row(
-        Modifier.height(40.dp).onFocusChanged { focused = it.isFocused }.clip(RoundedCornerShape(20.dp))
-            .background(if (focused) Color.White else Color(0x33FFFFFF)).clickable(onClick = onClick).padding(horizontal = 14.dp),
+        Modifier.height(32.dp).onFocusChanged { focused = it.isFocused }.clip(RoundedCornerShape(16.dp))
+            .background(if (focused) Color.White else Color.White.copy(alpha = 0.12f)).clickable(onClick = onClick).padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, null, tint = if (focused) Color.Black else Color.White, modifier = Modifier.size(18.dp))
-        Text("  $label", color = if (focused) Color.Black else Color.White, fontSize = 14.sp)
+        Icon(icon, null, tint = if (focused) Color.Black else Color.White, modifier = Modifier.size(16.dp))
+        Text("  $label", color = if (focused) Color.Black else Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
     }
 }
 

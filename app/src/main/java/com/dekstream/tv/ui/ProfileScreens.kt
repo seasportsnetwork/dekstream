@@ -171,7 +171,7 @@ fun ProfilePickerScreen() {
                 val shape = RoundedCornerShape(24.dp)
                 Column(
                     Modifier.width(120.dp).focusRing(shape, 1.08f).clip(shape)
-                        .combinedClickable(onClick = { if (p.pin.isNotEmpty()) unlocking = p else app.start(p) }, onLongClick = { editing = p }).padding(8.dp),
+                        .tvClickable(onClick = { if (p.pin.isNotEmpty()) unlocking = p else app.start(p) }, onLongClick = { editing = p }).padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Avatar(p, 96.dp)

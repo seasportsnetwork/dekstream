@@ -325,7 +325,7 @@ private fun PinnedChannelCard(c: com.dekstream.tv.data.Channel, onClick: (com.de
     val shape = RoundedCornerShape(14.dp)
     Column(
         Modifier.width(200.dp).height(96.dp).focusRing(shape, 1.04f).clip(shape).background(DS.Surface)
-            .combinedClickable(onClick = { onClick(repo) }, onLongClick = onLongClick).padding(10.dp),
+            .tvClickable(onClick = { onClick(repo) }, onLongClick = onLongClick).padding(10.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             ChannelLogo(c.icon, 36.dp)
@@ -387,7 +387,7 @@ fun GameRow(g: Game, favorite: Boolean, hideScores: Boolean = false, selected: B
             .clip(shape)
             .background(if (selected) DS.AccentSoft else DS.Surface)
             .then(if (selected) Modifier.border(2.dp, DS.Accent, shape) else Modifier)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .tvClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -452,7 +452,7 @@ private fun FavTeamCard(team: FavTeam, g: Game, hideScores: Boolean, selected: B
     Row(
         Modifier.width(300.dp).focusRing(shape, 1.03f).clip(shape).background(if (selected) DS.AccentSoft else DS.Surface)
             .then(if (selected) Modifier.border(2.dp, DS.Accent, shape) else Modifier)
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick).padding(12.dp),
+            .tvClickable(onClick = onClick, onLongClick = onLongClick).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TeamLogo(me.logo ?: team.logo, 40.dp)

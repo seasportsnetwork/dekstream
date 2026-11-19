@@ -15,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -108,4 +109,40 @@ fun Modifier.focusRing(shape: Shape = RectangleShape, scale: Float = 1.05f): Mod
                 else -> Modifier.border(2.dp, DS.Focus, shape)
             }
         )
+}
+
+
+/**
+ * Click + long-press that also works with a TV remote: hold OK (or press Menu) for the long-press action.
+ * Touch still uses the normal tap / long-press gestures.
+ */
+@kotlin.OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+fun Modifier.tvClickable(onClick: () -> Unit, onLongClick: (() -> Unit)? = null): Modifier = composed {
+    var down by remember { mutableStateOf(false) }
+    var longFired by remember { mutableStateOf(false) }
+    this
+        .onPreviewKeyEvent { ev ->
+            val k = ev.nativeKeyEvent
+            val select = k.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || k.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+                k.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || k.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A
+            if (k.keyCode == android.view.KeyEvent.KEYCODE_MENU && onLongClick != null) {
+                if (k.action == android.view.KeyEvent.ACTION_DOWN && k.repeatCount == 0) onLongClick()
+                return@onPreviewKeyEvent true
+            }
+            if (!select) return@onPreviewKeyEvent false
+            when (k.action) {
+                android.view.KeyEvent.ACTION_DOWN -> {
+                    if (k.repeatCount == 0) { down = true; longFired = false }
+                    else if (onLongClick != null && !longFired && (k.isLongPress || k.repeatCount >= 2)) { longFired = true; onLongClick() }
+                    true
+                }
+                android.view.KeyEvent.ACTION_UP -> {
+                    if (down && !longFired) onClick()
+                    down = false; longFired = false
+                    true
+                }
+                else -> false
+            }
+        }
+        .combinedClickable(onClick = onClick, onLongClick = onLongClick)
 }
