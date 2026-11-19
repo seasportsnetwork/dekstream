@@ -165,6 +165,23 @@ class SportsRepo(private val http: OkHttpClient) {
         return BoxScore(awayLines, homeLines, stats.take(12))
     }
 
+    /** Scoring plays for "catch me up" (newest last). Big sports list every basket, so callers trim. */
+    suspend fun scoringPlays(g: Game): List<ScoringPlay> {
+        val o = runCatching { get("${base(g.league)}/summary?event=${g.id}") }.getOrNull() ?: return emptyList()
+        val out = ArrayList<ScoringPlay>()
+        fun add(p: JSONObject) {
+            val text = p.s("text") ?: p.s("shortText") ?: return
+            val period = p.optJSONObject("period")?.let { it.s("displayValue") ?: it.s("number")?.let { n -> "P$n" } } ?: ""
+            val clock = p.optJSONObject("clock")?.s("displayValue") ?: ""
+            val teamId = p.optJSONObject("team")?.s("id")
+            out += ScoringPlay(text, period, clock, p.s("awayScore") ?: "", p.s("homeScore") ?: "", teamId)
+        }
+        val sp = o.optJSONArray("scoringPlays")
+        if (sp != null && sp.length() > 0) sp.objects { add(it) }
+        else o.optJSONArray("plays")?.objects { p -> if (p.bool("scoringPlay")) add(p) }
+        return out
+    }
+
     /** Formula 1 race weekends (practice, qualifying, sprint, race). */
     suspend fun f1Weekends(): List<RaceWeekend> {
         val l = league("f1") ?: return emptyList()
@@ -355,3 +372,5 @@ data class BoxScore(val awayLines: List<String>, val homeLines: List<String>, va
 data class RaceSession(val name: String, val startMs: Long, val state: String, val detail: String, val leader: String?)
 
 data class RaceWeekend(val id: String, val name: String, val circuit: String?, val sessions: List<RaceSession>)
+
+data class ScoringPlay(val text: String, val period: String, val clock: String, val awayScore: String, val homeScore: String, val teamId: String?)

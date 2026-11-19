@@ -69,7 +69,7 @@ import com.dekstream.tv.data.MultiLayout
  * Tap a tile for its sound, long-press to change its channel, swap tiles, save up to 8 layouts.
  */
 @Composable
-fun MultiviewScreen(initial: List<Channel> = emptyList(), onExit: (() -> Unit)? = null) {
+fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstream.tv.data.Game> = emptyList(), onExit: (() -> Unit)? = null) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val slots = remember { mutableStateListOf<Channel?>().apply { repeat(4) { i -> add(initial.getOrNull(i)) } } }
@@ -82,6 +82,30 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), onExit: (() -> Unit)? 
     val all by rememberLoad(Unit) { repo.allChannels() }
 
     if (onExit != null) BackHandler { onExit() }
+
+    // Sports multiview: the sound jumps to whichever game just scored.
+    var followAction by remember { mutableStateOf(games.isNotEmpty()) }
+    var actionNote by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(games, followAction) {
+        if (games.isEmpty() || !followAction) return@LaunchedEffect
+        val last = HashMap<String, String>()
+        var current = games
+        while (true) {
+            current = current.map { g -> runCatching { app.sports.refresh(g) }.getOrDefault(g) }
+            current.forEachIndexed { i, g ->
+                val total = "${g.home.score}-${g.away.score}"
+                val before = last[g.id]
+                last[g.id] = total
+                if (before != null && before != total && i < 4 && slots[i] != null && audio != i) {
+                    audio = i
+                    actionNote = if (app.prefs.hideScores.value) "Sound moved to ${g.away.abbr} @ ${g.home.abbr}"
+                        else "Score in ${g.away.abbr} @ ${g.home.abbr} · ${g.away.score}–${g.home.score}"
+                }
+            }
+            kotlinx.coroutines.delay(30_000)
+        }
+    }
+    LaunchedEffect(actionNote) { if (actionNote != null) { kotlinx.coroutines.delay(5_000); actionNote = null } }
     LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(60_000); if (slots.any { it != null }) app.session?.settings?.addWatchMinute() } }
 
     fun tileClick(i: Int) {
@@ -114,6 +138,10 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), onExit: (() -> Unit)? 
                 Icon(Icons.Default.SwapHoriz, "Swap tiles", tint = if (swapFrom != null) DS.Accent else DS.TextDim)
             }
             IconButton(onClick = { saving = true }, modifier = Modifier.focusRing()) { Icon(Icons.Default.BookmarkAdd, "Save layout", tint = DS.TextDim) }
+            if (games.isNotEmpty()) {
+                CategoryChip(if (followAction) "Sound follows the action: on" else "Sound follows the action: off", followAction) { followAction = !followAction }
+                HSpacer(6.dp)
+            }
             LazyRow(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(layouts, key = { it.name }) { l ->
                     val shape = RoundedCornerShape(16.dp)
@@ -127,6 +155,7 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), onExit: (() -> Unit)? 
             }
         }
         if (swapFrom != null) Text("Swap: pick the tile to trade places with.", color = DS.Accent, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp, bottom = 4.dp))
+        actionNote?.let { Text("🔊 $it", color = DS.Accent, fontSize = 13.sp, modifier = Modifier.padding(start = 10.dp, bottom = 4.dp)) }
 
         val tile: @Composable (Int, Modifier) -> Unit = { i, m ->
             Box(m.padding(3.dp)) {

@@ -71,6 +71,7 @@ fun GameDetailScreen(initial: Game, state: AppState) {
     val hide by app.prefs.hideScores.collectAsState()
     val pinned by app.prefs.sportsChannels.collectAsState()
     val box by rememberLoad(initial.id, game.detail) { app.sports.boxScore(game) }
+    val plays by rememberLoad(initial.id, game.detail) { if (game.state == "pre") emptyList() else app.sports.scoringPlays(game) }
     BackHandler { state.pop() }
 
     // Live score updates.
@@ -185,6 +186,8 @@ fun GameDetailScreen(initial: Game, state: AppState) {
                 }
             }
             if (!hide && game.state != "pre") {
+                val list = plays.valueOrNull().orEmpty()
+                if (list.isNotEmpty()) item { CatchMeUpCard(game, list) }
                 val bs = box.valueOrNull()
                 if (bs != null) item { BoxScoreCard(game, bs) }
             }
@@ -360,6 +363,31 @@ private fun BoxScoreCard(g: Game, bs: com.dekstream.tv.data.BoxScore) {
                     Text(a, color = DS.Text, fontSize = 14.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.Start)
                     Text(label, color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.weight(2f), textAlign = TextAlign.Center)
                     Text(h, color = DS.Text, fontSize = 14.sp, modifier = Modifier.weight(1f), textAlign = TextAlign.End)
+                }
+            }
+        }
+    }
+}
+
+/** "Catch me up": the latest scoring plays, newest first. */
+@Composable
+private fun CatchMeUpCard(g: Game, plays: List<com.dekstream.tv.data.ScoringPlay>) {
+    Column(Modifier.fillMaxWidth().padding(top = 14.dp).clip(RoundedCornerShape(14.dp)).background(DS.Surface).padding(14.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Catch me up", color = DS.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(if (g.isLive) "Latest scoring" else "Scoring plays", color = DS.TextDim, fontSize = 12.sp)
+        }
+        plays.takeLast(8).reversed().forEach { p ->
+            val team = when (p.teamId) { g.home.id -> g.home; g.away.id -> g.away; else -> null }
+            Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(26.dp)) { if (team != null) TeamLogo(team.logo, 26.dp) }
+                Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                    Text(p.text, color = DS.Text, fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    Text(listOf(p.period, p.clock).filter { it.isNotBlank() }.joinToString(" · "), color = DS.TextDim, fontSize = 12.sp)
+                }
+                if (p.awayScore.isNotBlank() || p.homeScore.isNotBlank()) {
+                    Text("${p.awayScore}–${p.homeScore}", color = DS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(start = 10.dp))
                 }
             }
         }
