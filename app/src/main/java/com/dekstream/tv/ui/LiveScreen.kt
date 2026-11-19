@@ -1,6 +1,17 @@
 package com.dekstream.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -93,6 +104,7 @@ fun LiveScreen(state: AppState) {
     var catMenu by remember { mutableStateOf<Category?>(null) }
     val favs by app.prefs.favorites.collectAsState()
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
+    var previewing by remember { mutableStateOf<Channel?>(null) }
 
     catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }) }
     LoadView(cats) { catList ->
@@ -100,17 +112,33 @@ fun LiveScreen(state: AppState) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= 640.dp
             if (wide) {
+                val showPreview = maxWidth >= 900.dp
                 Row(Modifier.fillMaxSize()) {
                     LazyColumn(
-                        Modifier.width(240.dp).fillMaxHeight().background(DS.Bg),
+                        Modifier.width(210.dp).fillMaxHeight().background(DS.Bg),
                         contentPadding = PaddingValues(12.dp),
                     ) {
+                        item {
+                            Text("Live TV", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 6.dp, top = 6.dp, bottom = 10.dp))
+                        }
                         items(catList, key = { it.id }) { c ->
                             CategoryItem(c.name, c.id == catId, onLongClick = { catMenu = c }) { selected = c.id }
                         }
                     }
                     Box(Modifier.weight(1f).fillMaxHeight()) {
-                        LoadView(all) { list -> ChannelList(filterChannels(list, catId, favs), state) }
+                        LoadView(all) { list ->
+                            val shown = filterChannels(list, catId, favs)
+                            if (showPreview && previewing == null) shown.firstOrNull()?.let { previewing = it }
+                            ChannelList(
+                                shown, state,
+                                selectedId = if (showPreview) previewing?.streamId else null,
+                                onSelect = if (showPreview) { c -> previewing = c } else null,
+                            )
+                        }
+                    }
+                    if (showPreview) {
+                        PreviewPane(previewing, all.valueOrNull().orEmpty().let { filterChannels(it, catId, favs) }, state,
+                            Modifier.weight(1.1f).fillMaxHeight())
                     }
                 }
             } else {
@@ -168,7 +196,7 @@ fun CategoryChip(name: String, selected: Boolean, onLongClick: (() -> Unit)? = n
 }
 
 @Composable
-fun ChannelList(channels: List<Channel>, state: AppState) {
+fun ChannelList(channels: List<Channel>, state: AppState, selectedId: Int? = null, onSelect: ((Channel) -> Unit)? = null) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val favs by app.prefs.favorites.collectAsState()
@@ -186,16 +214,86 @@ fun ChannelList(channels: List<Channel>, state: AppState) {
             val prog = now?.let {
                 ((System.currentTimeMillis() - it.startMs).toFloat() / (it.endMs - it.startMs)).coerceIn(0f, 1f)
             }
+            val isSel = selectedId == c.streamId
             ChannelRowItem(
                 name = c.name, icon = c.icon, number = c.num.takeIf { it > 0 },
                 now = now?.title, next = next?.title, nowProgress = prog,
                 favorite = c.streamId in favs,
+                selected = isSel,
                 onClick = {
-                    app.prefs.markChannelWatched(c.streamId)
-                    state.play(repo.liveRequest(c), channels)
+                    // With a preview pane: first tap previews, second tap (or OK) goes full screen.
+                    if (onSelect != null && !isSel && !DekStreamApp.instance.isTv) onSelect(c)
+                    else {
+                        app.prefs.markChannelWatched(c.streamId)
+                        state.play(repo.liveRequest(c), channels)
+                    }
                 },
                 onLongClick = { menuFor = c },
+                modifier = if (onSelect != null) Modifier.onFocusChanged { if (it.hasFocus) onSelect(c) } else Modifier,
             )
+        }
+    }
+}
+
+/** Right-hand pane: small live picture of the highlighted channel plus now/next. */
+@Composable
+private fun PreviewPane(c: Channel?, list: List<Channel>, state: AppState, modifier: Modifier) {
+    val app = DekStreamApp.instance
+    val repo = app.repo ?: return
+    val epg by produceState<List<Program>>(emptyList(), c?.streamId) { value = c?.let { repo.nowNext(it) }.orEmpty() }
+    val now = epg.firstOrNull { it.isLive() }
+    val next = epg.firstOrNull { it.startMs > System.currentTimeMillis() }
+    Column(modifier.padding(start = 6.dp, end = 20.dp, top = 16.dp)) {
+        LivePreview(c, Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+            if (c != null) {
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(10.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x99000000))
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(7.dp).clip(RoundedCornerShape(4.dp)).background(DS.Live))
+                    Text("  PREVIEW", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                }
+            }
+        }
+        if (c == null) { Text("Pick a channel", color = DS.TextDim, modifier = Modifier.padding(top = 16.dp)); return@Column }
+        Row(Modifier.padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            ChannelLogo(c.icon, 40.dp)
+            Column(Modifier.padding(start = 12.dp).weight(1f)) {
+                Text(c.name, color = DS.Text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (c.num > 0) Text("Channel ${c.num}", color = DS.TextDim, fontSize = 12.sp)
+            }
+        }
+        if (now != null) {
+            Text(now.title, color = DS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 14.dp))
+            Text("${fmtTime(now.startMs)} – ${fmtTime(now.endMs)}  ·  ${minutesLeft(now)} left", color = DS.TextDim, fontSize = 13.sp,
+                modifier = Modifier.padding(top = 4.dp))
+            val f = ((System.currentTimeMillis() - now.startMs).toFloat() / (now.endMs - now.startMs)).coerceIn(0f, 1f)
+            Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(DS.Surface2)) {
+                Box(Modifier.fillMaxWidth(f).height(4.dp).background(DS.Accent))
+            }
+            if (now.description.isNotBlank()) {
+                Text(now.description, color = DS.TextDim, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 10.dp))
+            }
+        } else {
+            Text("No guide information", color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 14.dp))
+        }
+        next?.let {
+            Row(Modifier.padding(top = 14.dp).fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(DS.Surface).padding(10.dp)) {
+                Text("NEXT", color = DS.Accent, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 10.dp))
+                Text("${fmtTime(it.startMs)}  ${it.title}", color = DS.Text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Button(
+            onClick = { app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c), list) },
+            colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+            shape = RoundedCornerShape(10.dp),
+            modifier = Modifier.padding(top = 16.dp).focusRing(RoundedCornerShape(10.dp)),
+        ) {
+            Icon(Icons.Default.Fullscreen, null, modifier = Modifier.size(20.dp))
+            Text(" Watch full screen", fontWeight = FontWeight.SemiBold)
         }
     }
 }

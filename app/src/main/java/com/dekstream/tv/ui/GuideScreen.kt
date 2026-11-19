@@ -1,6 +1,7 @@
 package com.dekstream.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.Orientation
@@ -60,7 +61,7 @@ import kotlin.math.roundToInt
 private const val HOURS_BACK = 3
 private const val HOURS_AHEAD = 8
 private val DP_PER_MIN = 5.dp
-private val ROW_H = 64.dp
+private val ROW_H = 58.dp
 private val CHANNEL_COL = 170.dp
 
 private val timeFmt = SimpleDateFormat("h:mm a", Locale.getDefault())
@@ -93,9 +94,13 @@ fun GuideScreen(state: AppState) {
     var scrollX by remember { mutableFloatStateOf((nowOffsetPx - with(density) { 60.dp.toPx() }).coerceAtLeast(0f)) }
     val totalPx = ((windowEnd - windowStart) / 60000f) * pxPerMin
 
+    var focusedProg by remember { mutableStateOf<Pair<Channel, Program>?>(null) }
     LoadView(cats) { catList ->
         val catId = selected ?: if (favs.isNotEmpty()) FAV_ID else catList.getOrNull(2)?.id ?: ALL_ID
         Column(Modifier.fillMaxSize().background(Appearance.guideBrush)) {
+            GuideInfoPanel(focusedProg, onWatch = { c ->
+                app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c))
+            })
             LazyRow(contentPadding = PaddingValues(12.dp), horizontalArrangement = rowSpacing) {
                 items(catList, key = { it.id }) { c -> CategoryChip(c.name, c.id == catId, onLongClick = { catMenu = c }) { selected = c.id } }
             }
@@ -137,6 +142,7 @@ fun GuideScreen(state: AppState) {
                                     },
                                     onProgram = { p -> picked = c to p },
                                     onChannelMenu = { chMenu = c },
+                                    onProgramFocus = { p -> focusedProg = c to p },
                                 )
                             }
                         }
@@ -206,6 +212,7 @@ private fun GuideRow(
     onChannel: () -> Unit,
     onProgram: (Program) -> Unit,
     onChannelMenu: () -> Unit,
+    onProgramFocus: (Program) -> Unit = {},
 ) {
     val repo = DekStreamApp.instance.repo ?: return
     val programs by produceState<List<Program>?>(null, c.streamId) {
@@ -253,6 +260,7 @@ private fun GuideRow(
                             .fillMaxHeight()
                             .onFocusChanged { f ->
                                 // keep the focused programme on screen while navigating with a remote
+                                if (f.isFocused && !isGap) onProgramFocus(p)
                                 if (f.isFocused) {
                                     if (x < scrollX) onScrollTo(x - 20f)
                                     else if (x + w > scrollX + viewportPx) {
@@ -309,4 +317,54 @@ private fun fillGaps(list: List<Program>, from: Long, to: Long): List<Pair<Progr
     }
     if (to - cursor >= 5 * 60_000) out += Program("No information", "", cursor, to, false) to true
     return out
+}
+
+/** Header that follows the highlighted show: live preview when it's on now, plus details. */
+@Composable
+private fun GuideInfoPanel(sel: Pair<Channel, Program>?, onWatch: (Channel) -> Unit) {
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth < 700.dp) return@BoxWithConstraints
+        val now = System.currentTimeMillis()
+        val (c, p) = sel ?: (null to null)
+        val live = p != null && p.isLive(now)
+        Row(Modifier.fillMaxWidth().height(196.dp).padding(start = 16.dp, end = 16.dp, top = 14.dp)) {
+            LivePreview(if (live) c else null, Modifier.height(182.dp).aspectRatio(16f / 9f)) {
+                if (!live) {
+                    Box(Modifier.fillMaxSize().background(DS.Surface), contentAlignment = Alignment.Center) {
+                        if (c != null) ChannelLogo(c.icon, 72.dp) else Text("Move through the guide to preview", color = DS.TextDim, fontSize = 12.sp)
+                    }
+                }
+            }
+            Column(Modifier.padding(start = 20.dp).weight(1f)) {
+                if (c == null || p == null) {
+                    Text("TV Guide", color = DS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                    Text("Highlight a show to see what it's about. Tap it for options.", color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+                    return@Column
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    ChannelLogo(c.icon, 28.dp)
+                    Text("  ${c.name}", color = DS.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (live) { HSpacer(10.dp); LiveBadge() }
+                }
+                Text(p.title, color = DS.Text, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 8.dp))
+                val day = if (android.text.format.DateUtils.isToday(p.startMs)) "Today" else java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault()).format(java.util.Date(p.startMs))
+                Text(
+                    "$day  ·  ${fmtTime(p.startMs)} – ${fmtTime(p.endMs)}  ·  ${(p.endMs - p.startMs) / 60_000} min" +
+                        (if (live) "  ·  ${minutesLeft(p)} left" else if (p.endMs <= now && c.hasArchive) "  ·  Catch-up available" else ""),
+                    color = DS.Text.copy(alpha = 0.8f), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp),
+                )
+                if (live) {
+                    val f = ((now - p.startMs).toFloat() / (p.endMs - p.startMs)).coerceIn(0f, 1f)
+                    Box(Modifier.padding(top = 8.dp).fillMaxWidth(0.6f).height(3.dp).clip(RoundedCornerShape(2.dp)).background(DS.Surface2)) {
+                        Box(Modifier.fillMaxWidth(f).height(3.dp).background(DS.Accent))
+                    }
+                }
+                if (p.description.isNotBlank()) {
+                    Text(p.description, color = DS.TextDim, fontSize = 13.sp, lineHeight = 18.sp, maxLines = 3, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 8.dp))
+                }
+            }
+        }
+    }
 }

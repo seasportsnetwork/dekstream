@@ -2,6 +2,10 @@ package com.dekstream.tv.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +40,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -62,19 +67,29 @@ fun VodBrowseScreen(state: AppState, isSeries: Boolean) {
     val cats by rememberLoad(isSeries) {
         (if (isSeries) repo.seriesCategories() else repo.vodCategories()).filter { allow == null || it.id in allow }
     }
+    var hero by remember { mutableStateOf<HeroItem?>(null) }
     LoadView(cats) { list ->
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 20.dp, end = 0.dp, top = 8.dp, bottom = 24.dp)) {
-            item {
-                Text(if (isSeries) "Series" else "Movies", color = DS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 12.dp))
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val heroH = (maxHeight * 0.42f).coerceIn(220.dp, 380.dp)
+            HeroBackdrop(hero, Modifier.fillMaxWidth().height(heroH + 70.dp))
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 24.dp, end = 0.dp, bottom = 24.dp)) {
+                item {
+                    Column(Modifier.fillMaxWidth().height(heroH).padding(top = 18.dp, end = 24.dp)) {
+                        Text(if (isSeries) "Series" else "Movies", color = DS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                        Spacer(Modifier.weight(1f))
+                        HeroInfo(hero ?: HeroItem("none", if (isSeries) "Find your next show" else "Find something to watch", null,
+                            description = "Move across the posters to see details here.", imageIsPoster = true))
+                        Spacer(Modifier.height(10.dp))
+                    }
+                }
+                items(list, key = { it.id }) { cat -> CategoryRow(cat, isSeries, state) { hero = it } }
             }
-            items(list, key = { it.id }) { cat -> CategoryRow(cat, isSeries, state) }
         }
     }
 }
 
 @Composable
-private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState) {
+private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState, onHero: (HeroItem) -> Unit) {
     val repo = DekStreamApp.instance.repo ?: return
     val progress by DekStreamApp.instance.prefs.progress.collectAsState()
     Column {
@@ -92,7 +107,14 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState) {
             LoadView(items, Modifier.height(220.dp)) { list ->
                 LazyRow(horizontalArrangement = rowSpacing, contentPadding = PaddingValues(end = 20.dp)) {
                     items(list.take(40), key = { it.seriesId }) { s ->
-                        PosterCard(s.name, s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) })
+                        PosterCard(
+                            s.name, s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) },
+                            modifier = Modifier.onFocusChanged {
+                                if (it.hasFocus) onHero(HeroItem("s-${s.seriesId}", s.name, s.backdrop ?: s.cover,
+                                    listOfNotNull(s.releaseDate?.take(4), s.genre, s.rating?.let { r -> "★ $r" }).joinToString("  ·  ").ifBlank { null },
+                                    s.plot, null, s.backdrop == null))
+                            },
+                        )
                     }
                 }
             }
@@ -101,10 +123,21 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState) {
             LoadView(items, Modifier.height(220.dp)) { list ->
                 LazyRow(horizontalArrangement = rowSpacing, contentPadding = PaddingValues(end = 20.dp)) {
                     items(list.take(40), key = { it.streamId }) { v ->
+                        var focused by remember { mutableStateOf(false) }
+                        LaunchedEffect(focused) {
+                            if (!focused) return@LaunchedEffect
+                            onHero(HeroItem("v-${v.streamId}", v.name, v.poster, imageIsPoster = true))
+                            kotlinx.coroutines.delay(350)
+                            val info = repo.vodInfo(v) ?: return@LaunchedEffect
+                            if (focused) onHero(HeroItem("v-${v.streamId}", v.name, info.backdrop ?: v.poster,
+                                listOfNotNull(info.releaseDate?.take(4), info.duration, info.genre, info.rating?.let { "★ $it" }).joinToString("  ·  ").ifBlank { null },
+                                info.plot, null, info.backdrop == null))
+                        }
                         PosterCard(
                             v.name, v.poster, 130.dp,
                             progress = progress["vod:${v.streamId}"]?.fraction,
                             onClick = { state.push(Route.MovieDetail(v)) },
+                            modifier = Modifier.onFocusChanged { focused = it.hasFocus },
                         )
                     }
                 }

@@ -72,7 +72,13 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     suspend fun series(categoryId: String): List<Series> =
         seriesByCat[categoryId] ?: provider.series(categoryId).also { seriesByCat[categoryId] = it }
 
-    suspend fun vodInfo(v: Vod) = provider.vodInfo(v)
+    private val vodInfoCache = ConcurrentHashMap<Int, VodInfo?>()
+    suspend fun vodInfo(v: Vod): VodInfo? {
+        if (vodInfoCache.containsKey(v.streamId)) return vodInfoCache[v.streamId]
+        val i = runCatching { provider.vodInfo(v) }.getOrNull()
+        vodInfoCache[v.streamId] = i
+        return i
+    }
     suspend fun seriesInfo(s: Series) = provider.seriesInfo(s)
 
     /** Guide entries from the whole-guide index for channels matched by hand. */

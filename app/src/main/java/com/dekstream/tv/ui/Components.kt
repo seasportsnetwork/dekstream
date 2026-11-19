@@ -195,6 +195,7 @@ fun ChannelRowItem(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     modifier: Modifier = Modifier,
+    selected: Boolean = false,
 ) {
     val shape = RoundedCornerShape(10.dp)
     Row(
@@ -203,7 +204,7 @@ fun ChannelRowItem(
             .padding(vertical = 3.dp)
             .focusRing(shape, 1.02f)
             .clip(shape)
-            .background(DS.Surface)
+            .background(if (selected) DS.AccentSoft else DS.Surface)
             .tvClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
