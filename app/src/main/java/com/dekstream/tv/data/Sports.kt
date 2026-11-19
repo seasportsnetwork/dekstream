@@ -305,6 +305,15 @@ class SportsRepo(private val http: OkHttpClient) {
             return out.sortedByDescending { it.score }.take(60)
         }
 
+        /** True if a guide listing clearly describes this game (both teams, or one team + league). */
+        fun programmeShows(game: Game, title: String, desc: String): Boolean {
+            val text = norm("$title $desc")
+            val h = words(game.home).any { text.contains(" $it ") }
+            val a = words(game.away).any { text.contains(" $it ") }
+            val league = listOf(game.league.short, game.league.name).map { norm(it).trim() }.any { text.contains(" $it ") }
+            return (h && a) || ((h || a) && league)
+        }
+
         /** Quality labels pulled from a channel name, e.g. "FHD", "60 fps". */
         fun qualityTags(name: String): List<String> {
             val n = norm(name)
