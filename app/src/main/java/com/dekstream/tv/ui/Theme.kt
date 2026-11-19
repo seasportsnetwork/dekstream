@@ -126,20 +126,23 @@ fun Modifier.tvClickable(onClick: () -> Unit, onLongClick: (() -> Unit)? = null)
             val k = ev.nativeKeyEvent
             val select = k.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER || k.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
                 k.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER || k.keyCode == android.view.KeyEvent.KEYCODE_BUTTON_A
+            // Open menus on key *release*, so the release doesn't land on the menu's first item.
             if (k.keyCode == android.view.KeyEvent.KEYCODE_MENU && onLongClick != null) {
-                if (k.action == android.view.KeyEvent.ACTION_DOWN && k.repeatCount == 0) onLongClick()
+                if (k.action == android.view.KeyEvent.ACTION_UP) onLongClick()
                 return@onPreviewKeyEvent true
             }
             if (!select) return@onPreviewKeyEvent false
             when (k.action) {
                 android.view.KeyEvent.ACTION_DOWN -> {
                     if (k.repeatCount == 0) { down = true; longFired = false }
-                    else if (onLongClick != null && !longFired && (k.isLongPress || k.repeatCount >= 2)) { longFired = true; onLongClick() }
+                    else if (onLongClick != null && (k.isLongPress || k.repeatCount >= 2)) longFired = true
                     true
                 }
                 android.view.KeyEvent.ACTION_UP -> {
-                    if (down && !longFired) onClick()
+                    val wasLong = longFired
+                    val wasDown = down
                     down = false; longFired = false
+                    if (wasDown) { if (wasLong && onLongClick != null) onLongClick() else onClick() }
                     true
                 }
                 else -> false
