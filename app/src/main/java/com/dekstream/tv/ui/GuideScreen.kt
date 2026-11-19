@@ -220,7 +220,7 @@ private fun GuideRow(
         Row(
             Modifier.width(CHANNEL_COL).fillMaxHeight().padding(end = 4.dp)
                 .focusRing(shape, 1.02f).clip(shape).background(DS.Surface)
-                .combinedClickable(onClick = onChannel, onLongClick = onChannelMenu).padding(horizontal = 8.dp),
+                .tvClickable(onClick = onChannel, onLongClick = onChannelMenu).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ChannelLogo(c.icon, 40.dp)

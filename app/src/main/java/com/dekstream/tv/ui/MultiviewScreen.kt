@@ -180,7 +180,7 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), onExit: (() -> Unit)? 
 @kotlin.OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Modifier.combinedClickableCompat(onClick: () -> Unit, onLongClick: () -> Unit): Modifier =
-    this.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+    this.tvClickable(onClick = onClick, onLongClick = onLongClick)
 
 @kotlin.OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -206,7 +206,7 @@ private fun MultiTile(
                     else -> Modifier
                 }
             )
-            .combinedClickable(onClick = onSelect, onLongClick = onChange),
+            .tvClickable(onClick = onSelect, onLongClick = onChange),
     ) {
         if (channel == null) {
             Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
