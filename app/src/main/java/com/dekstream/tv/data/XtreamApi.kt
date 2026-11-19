@@ -122,6 +122,7 @@ class XtreamApi(private val http: OkHttpClient, val account: Account) {
                 rating = o.s("rating"),
                 genre = o.s("genre"),
                 releaseDate = o.s("releaseDate") ?: o.s("release_date"),
+                backdrop = o.optJSONArray("backdrop_path")?.optString(0)?.takeIf { it.startsWith("http") },
             )
         }
         return out

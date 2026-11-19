@@ -24,6 +24,13 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,33 +80,47 @@ private fun TabContent(state: AppState) {
 private fun SideRail(state: AppState) {
     Column(
         Modifier
-            .width(196.dp)
+            .width(84.dp)
             .fillMaxHeight()
-            .background(DS.Surface)
+            .background(Brush.horizontalGradient(listOf(Appearance.palette.surface, Appearance.palette.bg)))
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 16.dp),
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Row(Modifier.padding(start = 4.dp, bottom = 20.dp), verticalAlignment = Alignment.CenterVertically) {
-            BrandMark(30.dp, nameSize = 19)
-        }
+        BrandMark(36.dp, showName = false)
+        Spacer(Modifier.height(18.dp))
         visibleTabs().forEach { t ->
             val selected = state.tab == t
-            val shape = RoundedCornerShape(10.dp)
-            Row(
+            var focused by remember { mutableStateOf(false) }
+            val shape = RoundedCornerShape(14.dp)
+            Column(
                 Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 2.dp)
-                    .focusRing(shape, 1.03f)
+                    .padding(vertical = 3.dp)
+                    .width(68.dp)
+                    .onFocusChanged { focused = it.isFocused }
                     .clip(shape)
-                    .background(if (selected) DS.AccentSoft else DS.Surface)
+                    .background(
+                        when {
+                            focused -> Color.White
+                            selected -> DS.AccentSoft
+                            else -> Color.Transparent
+                        }
+                    )
                     .clickable { state.tab = t }
-                    .padding(horizontal = 12.dp, vertical = 11.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Icon(t.icon, contentDescription = null, tint = if (selected) DS.Accent else DS.TextDim, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(12.dp))
-                Text(t.label, color = if (selected) DS.Text else DS.TextDim, fontSize = 15.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                Icon(
+                    t.icon, contentDescription = t.label,
+                    tint = when { focused -> Color.Black; selected -> DS.Accent; else -> DS.TextDim },
+                    modifier = Modifier.size(24.dp),
+                )
+                Text(
+                    t.label, fontSize = 10.sp, maxLines = 1,
+                    color = when { focused -> Color.Black; selected -> DS.Text; else -> DS.TextDim },
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    modifier = Modifier.padding(top = 3.dp),
+                )
             }
         }
         Spacer(Modifier.height(16.dp))

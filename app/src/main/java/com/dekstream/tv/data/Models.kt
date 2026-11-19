@@ -66,6 +66,7 @@ data class Series(
     val rating: String?,
     val genre: String?,
     val releaseDate: String?,
+    val backdrop: String? = null,
 )
 
 data class Episode(
