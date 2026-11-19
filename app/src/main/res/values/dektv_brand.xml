@@ -2,4 +2,6 @@
 <!-- DekTV branding: overrides the upstream OwnTV app name. -->
 <resources>
     <string name="app_name" translatable="false">DekTV</string>
+    <string name="dektv_wordmark_dek" translatable="false">Dek</string>
+    <string name="dektv_wordmark_tv" translatable="false">TV</string>
 </resources>
