@@ -1,4 +1,4 @@
-name: Build DekTV
+name: Build APK
 
 on:
   push:
@@ -7,10 +7,6 @@ on:
 
 permissions:
   contents: write
-
-concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
@@ -21,11 +17,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '25'
-
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools'
+          java-version: 17
 
       - uses: gradle/actions/setup-gradle@v4
 
@@ -39,22 +31,22 @@ jobs:
               -in signing/release.jks.enc -out "$RUNNER_TEMP/release.jks" -pass file:"$RUNNER_TEMP/pw"
             rm "$RUNNER_TEMP/pw"
             echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::SIGNING_PASSWORD secret not set - using a throwaway debug key (updates will need an uninstall)."
           fi
 
-      - name: "Build release APK (arm: Shield, Android TV, Fire TV)"
+      - name: Build release APK
         env:
-          RUN_NUMBER: ${{ github.run_number }}
           KEYSTORE_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           KEY_ALIAS: dekflix
           KEY_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
-          export VERSION_NAME="2.0.$RUN_NUMBER"
-          export VERSION_CODE=$((20000 + RUN_NUMBER))
-          chmod +x ./gradlew
-          ./gradlew --no-daemon assembleStandardRelease --stacktrace
-          SRC=$(ls app/build/outputs/apk/standard/release/*.apk | head -n1)
-          cp "$SRC" DekTV.apk
-          cp DekTV.apk DekStream.apk   # keeps the old download link working
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease \
+            -PappVersionName=3.0.${{ github.run_number }} \
+            -PappVersionCode=$((30000 + ${{ github.run_number }}))
+          cp app/build/outputs/apk/release/app-release.apk DekTV.apk
+          cp DekTV.apk DekStream.apk  # keeps the old download link working
 
       - uses: actions/upload-artifact@v4
         with:
@@ -64,9 +56,8 @@ jobs:
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.${{ github.run_number }}
-          name: DekTV v2.0.${{ github.run_number }}
-          body: DekTV is based on OwnTV (https://github.com/ahXN00/OwnTV), GPLv3. See NOTICE.md.
+          tag_name: v3.0.${{ github.run_number }}
+          name: DekTV v3.0.${{ github.run_number }}
           make_latest: true
           files: |
             DekTV.apk
