@@ -694,8 +694,7 @@ fun StageSettingRow(
                     )
                 }
             }
-            // A disabled row's "−" / "+" must not change it either.
-            if (value != null) SettingValueView(value, onStep.takeIf { enabled })
+            if (value != null) SettingValueView(value)
         }
     }
 }
@@ -703,7 +702,7 @@ fun StageSettingRow(
 private val FocusedDesc: Color @Composable get() = StageColors.FxLine
 
 @Composable
-private fun SettingValueView(value: SettingValue, onStep: ((Int) -> Unit)?) {
+private fun SettingValueView(value: SettingValue) {
     val a = stageAccent
     val valueStyle = stageText(18, 700)
     Row(horizontalArrangement = Arrangement.spacedBy(10.mpx), verticalAlignment = Alignment.CenterVertically) {
@@ -719,7 +718,7 @@ private fun SettingValueView(value: SettingValue, onStep: ((Int) -> Unit)?) {
                 }
                 OwnTVIcon(OwnTVIcon.CHEVRON, StageColors.Muted, Modifier.size(20.mpx))
             }
-            is SettingValue.Stepper -> StageStepper(value.text, onStep)
+            is SettingValue.Stepper -> StageStepper(value.text)
             is SettingValue.Segmented -> SegmentedDisplay(value.options, value.selected)
             is SettingValue.Saved -> {
                 Text(value.text, style = valueStyle, color = a.accent, maxLines = 1, overflow = TextOverflow.Ellipsis)
