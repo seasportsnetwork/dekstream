@@ -94,6 +94,10 @@ class DekStreamApp : Application() {
     fun start(p: Profile) {
         store.lastProfileId = p.id
         applyAppearance(ProfileSettings(this, p.id))
+        ProfileSettings(this, p.id).let { ps ->
+            com.dekstream.tv.data.ContentFilter.showAdult = ps.showAdult && !p.kids
+            com.dekstream.tv.data.HomeLayout.hidden = ps.homeHidden
+        }
         val visible = store.sources.value.filter { p.canSee(it.id) }
         val src = store.source(p.sourceId)?.takeIf { p.canSee(it.id) } ?: visible.firstOrNull()
         if (src == null) { session = null; pendingProfile = p; return }

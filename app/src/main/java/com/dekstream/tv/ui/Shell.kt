@@ -71,6 +71,7 @@ private fun TabContent(state: AppState) {
     when (state.tab) {
         Tab.Home -> HomeScreen(state)
         Tab.Live -> LiveScreen(state)
+        Tab.Favorites -> FavoritesScreen(state)
         Tab.Guide -> GuideScreen(state)
         Tab.Movies -> VodBrowseScreen(state, isSeries = false)
         Tab.Series -> VodBrowseScreen(state, isSeries = true)
@@ -85,7 +86,7 @@ private fun TabContent(state: AppState) {
 /** Sidebar groups, HolyArrs style: unlabeled top group, then labeled sections. */
 private val sidebarGroups: List<Pair<String?, List<Tab>>> = listOf(
     null to listOf(Tab.Home, Tab.Search),
-    "Watch" to listOf(Tab.Live, Tab.Guide, Tab.Sports, Tab.Multiview),
+    "Watch" to listOf(Tab.Live, Tab.Favorites, Tab.Guide, Tab.Sports, Tab.Multiview),
     "Library" to listOf(Tab.Movies, Tab.Series),
     "Manage" to listOf(Tab.Settings),
 )
@@ -228,7 +229,7 @@ fun visibleTabs(): List<Tab> {
     val src = session.source
     return Tab.entries.filter { t ->
         when (t) {
-            Tab.Live, Tab.Guide, Tab.Multiview -> src.loadLive
+            Tab.Live, Tab.Guide, Tab.Multiview, Tab.Favorites -> src.loadLive
             Tab.Movies -> src.loadMovies
             Tab.Series -> src.loadShows
             Tab.Settings -> true

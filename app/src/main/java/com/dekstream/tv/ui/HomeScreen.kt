@@ -22,6 +22,12 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.SportsFootball
 import com.dekstream.tv.data.Game
+import com.dekstream.tv.data.HomeLayout
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -86,15 +92,21 @@ fun HomeScreen(state: AppState) {
     val all by rememberLoad(Unit) { repo.allChannels() }
     val sports by rememberLoad(favTeams) { app.sports.favoriteGames(favTeams) }
 
+    val showMovies = HomeLayout.shows("movies")
+    val showSeries = HomeLayout.shows("series")
+    val showMoods = HomeLayout.shows("moods")
     // A couple of movie and series rows to make Home feel alive.
-    val movieRows by rememberLoad(Unit) {
+    val movieRows by rememberLoad(showMovies) {
+        if (!showMovies) return@rememberLoad emptyList()
         repo.vodCategories().take(2).map { c -> c to repo.vods(c.id).filter { it.poster != null }.take(30) }.filter { it.second.isNotEmpty() }
     }
-    val seriesRows by rememberLoad(Unit) {
+    val seriesRows by rememberLoad(showSeries) {
+        if (!showSeries) return@rememberLoad emptyList()
         repo.seriesCategories().take(2).map { c -> c to repo.series(c.id).filter { it.cover != null }.take(30) }.filter { it.second.isNotEmpty() }
     }
     // Mood / genre tiles: movie categories with the first poster as art.
-    val moods by rememberLoad(Unit) {
+    val moods by rememberLoad(showMoods) {
+        if (!showMoods) return@rememberLoad emptyList()
         repo.vodCategories().take(8).mapNotNull { c ->
             val art = runCatching { repo.vods(c.id).firstOrNull { it.poster != null }?.poster }.getOrNull()
             Mood(c, cleanCategoryName(c.name), art)
@@ -103,13 +115,26 @@ fun HomeScreen(state: AppState) {
 
     val channels = all.valueOrNull().orEmpty()
     val byId = channels.associateBy { it.streamId }
-    val liveNow = (favIds.mapNotNull { byId[it] } + recentIds.mapNotNull { byId[it] }).distinctBy { it.streamId }.take(20)
+    val favChannels = favIds.mapNotNull { byId[it] }
+    val recentChannels = recentIds.mapNotNull { byId[it] }.filter { it.streamId !in favIds }.take(20)
+    val liveNow = (favChannels + recentChannels).distinctBy { it.streamId }.take(20)
     val cont = progress.values.sortedByDescending { it.updatedAt }
+        .let { l -> if (showMovies || showSeries) l else l.filter { it.key.startsWith("live") } }
     val games = sports.valueOrNull().orEmpty()
 
     // Featured: continue watching + new movies/series with wide art (looked up in the background).
-    val featured by produceState<List<Featured>>(emptyList(), movieRows, seriesRows, cont.size) {
+    val featured by produceState<List<Featured>>(emptyList(), movieRows, seriesRows, cont.size, liveNow.size) {
         val out = ArrayList<Featured>()
+        // Live TV only (or nothing else to feature): what's on your channels.
+        if (!showMovies && !showSeries) liveNow.take(5).forEach { c ->
+            val now = runCatching { repo.nowNext(c).firstOrNull { it.isLive() } }.getOrNull()
+            out += Featured(
+                HeroItem("l-${c.streamId}", now?.title ?: c.name, c.icon,
+                    meta = c.name + (now?.let { "  ·  ${fmtTime(it.startMs)} – ${fmtTime(it.endMs)}  ·  ${minutesLeft(it)} left" } ?: ""),
+                    description = now?.description, badge = "On now", imageIsPoster = true),
+                onPlay = { app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c), liveNow) }, onInfo = null,
+            )
+        }
         cont.take(2).forEach { p ->
             out += Featured(
                 HeroItem("c-" + p.key, p.title, p.poster, meta = p.subtitle ?: "Pick up where you left off", badge = "Continue watching",
@@ -179,12 +204,18 @@ fun HomeScreen(state: AppState) {
                         if (wide) {
                             Text(statusLine(liveNow.size, games.count { it.second.isLive }, nextGame), color = DS.TextDim, fontSize = 13.sp,
                                 modifier = Modifier.padding(start = 14.dp).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            PillButton("Sports", { state.tab = Tab.Sports }, Icons.Default.SportsFootball)
+                            PillButton("Favorites", { state.tab = Tab.Favorites }, Icons.Default.Favorite)
                             Spacer(Modifier.width(8.dp))
-                            PillButton("Multiview", { state.tab = Tab.Multiview }, Icons.Default.GridView)
+                            PillButton("Customize", { state.push(Route.HomeSettings) }, Icons.Default.Tune)
                         }
                     }
                     if (!wide) {
+                        Row(Modifier.padding(top = 10.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            PillButton("Favorites", { state.tab = Tab.Favorites }, Icons.Default.Favorite)
+                            PillButton("Multiview", { state.tab = Tab.Multiview }, Icons.Default.GridView)
+                            PillButton("Customize", { state.push(Route.HomeSettings) }, Icons.Default.Tune)
+                            PillButton("Settings", { state.tab = Tab.Settings }, Icons.Default.Settings)
+                        }
                         Text(statusLine(liveNow.size, games.count { it.second.isLive }, nextGame), color = DS.TextDim, fontSize = 13.sp,
                             modifier = Modifier.padding(top = 10.dp))
                     }
@@ -192,7 +223,7 @@ fun HomeScreen(state: AppState) {
             }
 
             // Bento grid
-            item {
+            if (HomeLayout.shows("featured")) item {
                 val feature: @Composable (Modifier) -> Unit = { m ->
                     FeatureCard(current, featured.size, if (featured.isEmpty()) 0 else rotate % featured.size, m) { holdRotate = System.currentTimeMillis() }
                 }
@@ -214,6 +245,9 @@ fun HomeScreen(state: AppState) {
                         when { favTeams.isEmpty() -> "Pick your teams"; games.isEmpty() -> "No games today"
                             else -> "games · ${games.count { it.second.isLive }} live now" },
                         onClick = { state.tab = Tab.Sports }, modifier = m) },
+                    if (!showMovies && !showSeries) { m -> StatTile("Favorites", Icons.Default.Favorite, Color(0xFFFF375F), favChannels.size.toString(),
+                        favChannels.firstOrNull()?.let { "channels · ${it.name} and more" } ?: "Hold OK on a channel to add",
+                        onClick = { state.tab = Tab.Favorites }, modifier = m) } else
                     { m -> StatTile("Watching", Icons.Default.History, Color(0xFF2D7FF9), cont.size.toString(),
                         cont.firstOrNull()?.let { "Last: ${it.title}" } ?: "Nothing in progress",
                         onClick = { cont.firstOrNull()?.let { state.play(resumeRequest(it)) } ?: run { state.tab = Tab.Movies } },
@@ -266,7 +300,7 @@ fun HomeScreen(state: AppState) {
                 }
             }
 
-            if (cont.isNotEmpty()) {
+            if (cont.isNotEmpty() && HomeLayout.shows("continue")) {
                 item { SectionHeader("Continue watching", "Pick up where you left off", modifier = Modifier.padding(horizontal = pad)) }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
@@ -281,16 +315,29 @@ fun HomeScreen(state: AppState) {
                 }
             }
 
-            if (liveNow.isNotEmpty()) {
-                item { SectionHeader("On now", "Your favorite and recent channels", onSeeAll = { state.tab = Tab.Live }, modifier = Modifier.padding(horizontal = pad)) }
+            if (favChannels.isNotEmpty() && HomeLayout.shows("favorites")) {
+                item { SectionHeader("Favorites", "Your channels, live now", onSeeAll = { state.tab = Tab.Favorites }, modifier = Modifier.padding(horizontal = pad)) }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(liveNow, key = { it.streamId }) { c -> LiveNowCard(c, onClick = { playLive(c) }, onFocused = {}) }
+                        items(favChannels, key = { "f" + it.streamId }) { c ->
+                            Box(Modifier.width(280.dp)) { FavChannelTile(c, onClick = { playLive(c) }, onLongClick = null) }
+                        }
+                    }
+                }
+            } else if (favChannels.isEmpty() && HomeLayout.shows("favorites") && HomeLayout.isLiveOnly) {
+                item { SectionHeader("Favorites", "Hold OK on a channel in Live TV to add it", modifier = Modifier.padding(horizontal = pad)) }
+            }
+
+            if (recentChannels.isNotEmpty() && HomeLayout.shows("recent")) {
+                item { SectionHeader("Recently watched", "Channels you watched lately", onSeeAll = { state.tab = Tab.Live }, modifier = Modifier.padding(horizontal = pad)) }
+                item {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                        items(recentChannels, key = { "r" + it.streamId }) { c -> LiveNowCard(c, onClick = { playLive(c) }, onFocused = {}) }
                     }
                 }
             }
 
-            if (games.isNotEmpty()) {
+            if (games.isNotEmpty() && HomeLayout.shows("teams")) {
                 item { SectionHeader("My teams", "Today's games", onSeeAll = { state.tab = Tab.Sports }, modifier = Modifier.padding(horizontal = pad)) }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = pad)) {
@@ -367,7 +414,14 @@ private fun FeatureCard(f: Featured?, count: Int, index: Int, modifier: Modifier
     val hero = f?.hero
     val poster = hero?.imageIsPoster == true
     BentoCard(modifier, image = if (poster) null else hero?.image, onClick = f?.onPlay, onFocused = onInteract) {
-        if (poster) {
+        if (poster && hero?.badge == "On now") {
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF15151A), DS.Accent.copy(alpha = 0.55f)))))
+            Box(Modifier.align(Alignment.CenterEnd).padding(end = 28.dp).size(130.dp).clip(RoundedCornerShape(28.dp)).background(Color(0x26FFFFFF)),
+                contentAlignment = Alignment.Center) {
+                hero.image?.let { AsyncImage(it, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(18.dp)) }
+                    ?: Icon(Icons.Default.LiveTv, null, tint = Color.White, modifier = Modifier.size(56.dp))
+            }
+        } else if (poster) {
             Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF15151A), DS.Accent.copy(alpha = 0.55f)))))
             hero?.image?.let {
                 AsyncImage(it, null, contentScale = ContentScale.Crop,
@@ -383,7 +437,9 @@ private fun FeatureCard(f: Featured?, count: Int, index: Int, modifier: Modifier
             return@BentoCard
         }
         hero.badge?.let {
-            Box(Modifier.align(Alignment.TopStart).padding(14.dp)) { ArtChip(it, Icons.Default.AutoAwesome) }
+            Box(Modifier.align(Alignment.TopStart).padding(14.dp)) {
+                if (it == "On now") ArtChip("On now", Icons.Default.FiberManualRecord, color = DS.Live) else ArtChip(it, Icons.Default.AutoAwesome)
+            }
         }
         Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(if (poster) 0.62f else 0.85f).padding(start = 20.dp, bottom = 18.dp, end = 12.dp)) {
             Text(hero.title, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black, lineHeight = 32.sp,
@@ -395,7 +451,7 @@ private fun FeatureCard(f: Featured?, count: Int, index: Int, modifier: Modifier
                 }
             }
             Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PillButton(when (hero.badge) { "Continue watching" -> "Resume"; "Series" -> "Episodes"; else -> "Play" },
+                PillButton(when (hero.badge) { "Continue watching" -> "Resume"; "Series" -> "Episodes"; "On now" -> "Watch"; else -> "Play" },
                     f!!.onPlay, Icons.Default.PlayArrow, primary = true, onImage = true)
                 f.onInfo?.let { CircleButton(Icons.Default.Info, it, contentDescription = "More info") }
             }

@@ -33,7 +33,7 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
 
     // ---- What this profile sees: hidden items removed, renames/numbers/guide matches applied ----
     private fun viewCats(list: List<Category>, prefix: String) = list
-        .filter { (prefix + it.id) !in prefs.hiddenCats }
+        .filter { (prefix + it.id) !in prefs.hiddenCats && !ContentFilter.hides(it.name) }
         .map { c -> prefs.catNames[prefix + c.id]?.let { c.copy(name = it) } ?: c }
 
     suspend fun liveCategories() = viewCats(rawLiveCategories(), "l:")
@@ -48,9 +48,13 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
         val names = prefs.channelNames
         val nums = prefs.channelNumbers
         val ov = prefs.epgOverrides
-        if (hidden.isEmpty() && hiddenCats.isEmpty() && names.isEmpty() && nums.isEmpty() && ov.isEmpty()) return raw
+        val adultCats = if (ContentFilter.showAdult) emptySet()
+            else rawLiveCategories().filter { ContentFilter.isAdult(it.name) }.map { it.id }.toSet()
+        val filterAdult = !ContentFilter.showAdult
+        if (hidden.isEmpty() && hiddenCats.isEmpty() && names.isEmpty() && nums.isEmpty() && ov.isEmpty() && !filterAdult) return raw
         return raw.asSequence()
             .filter { it.streamId !in hidden && ("l:" + it.categoryId) !in hiddenCats }
+            .filter { !filterAdult || (it.categoryId !in adultCats && !ContentFilter.isAdult(it.name)) }
             .map { c ->
                 if (c.streamId !in names && c.streamId !in nums && c.streamId !in ov) c
                 else c.copy(
@@ -98,10 +102,12 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     fun clearEpgCache() { epgShort.clear(); epgFull.clear() }
 
     suspend fun vods(categoryId: String): List<Vod> =
-        vodByCat[categoryId] ?: provider.vods(categoryId).also { vodByCat[categoryId] = it }
+        (vodByCat[categoryId] ?: provider.vods(categoryId).also { vodByCat[categoryId] = it })
+            .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
 
     suspend fun series(categoryId: String): List<Series> =
-        seriesByCat[categoryId] ?: provider.series(categoryId).also { seriesByCat[categoryId] = it }
+        (seriesByCat[categoryId] ?: provider.series(categoryId).also { seriesByCat[categoryId] = it })
+            .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
 
     private val vodInfoCache = ConcurrentHashMap<Int, VodInfo?>()
     suspend fun vodInfo(v: Vod): VodInfo? {

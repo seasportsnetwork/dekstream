@@ -142,6 +142,7 @@ private fun SignedIn() {
         is Route.Multiview -> MultiviewScreen(top.channels, top.games, onExit = { state.pop() })
         is Route.KidsRules -> KidsRulesScreen(top.profileId, state)
         Route.AppearanceSettings -> AppearanceScreen(state)
+        Route.HomeSettings -> HomeLayoutScreen(state)
         Route.ChannelManager -> ChannelManagerScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
