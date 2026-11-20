@@ -4,6 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.NoAdultContent
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Icon
@@ -38,6 +43,12 @@ fun SettingsScreen(state: AppState) {
     val session = app.session ?: return
     var format by remember { mutableStateOf(app.prefs.liveFormat) }
     var pinStep by remember { mutableStateOf(0) } // 1 = confirm old, 2 = choose new
+    var adultAsk by remember { mutableStateOf(false) }
+    fun setAdult(on: Boolean) {
+        session.settings.showAdult = on
+        com.dekstream.tv.data.ContentFilter.showAdult = on
+        app.start(session.profile) // reload lists with the new filter
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp).widthIn(max = 640.dp)) {
         Text("Settings", color = DS.Text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
@@ -60,10 +71,36 @@ fun SettingsScreen(state: AppState) {
             NavRow(Icons.Default.Palette, "Appearance", "Accent, background, selection style, transparency, guide background") {
                 state.push(Route.AppearanceSettings)
             }
+            NavRow(Icons.Default.Dashboard, "Home screen", "Choose what Home shows: everything, Live TV only, or your own mix") {
+                state.push(Route.HomeSettings)
+            }
             if (!session.profile.kids) {
                 val hasPin = app.store.parentPin.isNotEmpty()
                 NavRow(Icons.Default.Lock, if (hasPin) "Change parent PIN" else "Set a parent PIN",
                     "Protects kids settings and locked channels") { pinStep = if (hasPin) 1 else 2 }
+            }
+        }
+
+        if (!session.profile.kids) {
+            SectionTitle("Content")
+            Card {
+                val on = com.dekstream.tv.data.ContentFilter.showAdult
+                val shape = RoundedCornerShape(10.dp)
+                Row(
+                    Modifier.fillMaxWidth().focusRing(shape, 1.02f).clip(shape)
+                        .clickable { if (on) setAdult(false) else adultAsk = true }.padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.NoAdultContent, null, tint = DS.Accent)
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                        Text("Show adult (XXX) content", color = DS.Text, fontSize = 15.sp)
+                        Text(if (on) "Adult channels, categories, movies and series are visible"
+                            else "Hidden everywhere: Live TV, Guide, Movies, Series, Search and Home",
+                            color = DS.TextDim, fontSize = 12.sp)
+                    }
+                    Switch(on, onCheckedChange = { if (it) adultAsk = true else setAdult(false) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = DS.Accent, checkedThumbColor = Color.White))
+                }
             }
         }
 
@@ -79,6 +116,11 @@ fun SettingsScreen(state: AppState) {
         Card {
             BrandMark(32.dp, nameSize = 18)
             InfoLine("Version", BuildConfig.VERSION_NAME)
+        }
+    }
+    if (adultAsk) {
+        ParentGate(requireSetup = false, reason = "Show adult content on this profile.", onDismiss = { adultAsk = false }) {
+            adultAsk = false; setAdult(true)
         }
     }
     when (pinStep) {

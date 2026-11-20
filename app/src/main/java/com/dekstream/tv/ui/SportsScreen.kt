@@ -94,6 +94,29 @@ fun gameTime(ms: Long): String {
     }
 }
 
+/** yyyyMMdd for today + offset days (ESPN's dates= format). */
+private fun dayKey(offset: Int): String {
+    val c = Calendar.getInstance(); c.add(Calendar.DAY_OF_YEAR, offset)
+    return SimpleDateFormat("yyyyMMdd", Locale.US).format(c.time)
+}
+
+/** True when ms falls on today + offset in this device's time zone. */
+private fun isOnDay(ms: Long, offset: Int): Boolean {
+    val t = Calendar.getInstance(); t.add(Calendar.DAY_OF_YEAR, offset)
+    val g = Calendar.getInstance(); g.timeInMillis = ms
+    return t.get(Calendar.YEAR) == g.get(Calendar.YEAR) && t.get(Calendar.DAY_OF_YEAR) == g.get(Calendar.DAY_OF_YEAR)
+}
+
+private fun dayChipLabel(offset: Int): String = when (offset) {
+    -1 -> "Yesterday"; 0 -> "Today"; 1 -> "Tomorrow"
+    else -> Calendar.getInstance().let { it.add(Calendar.DAY_OF_YEAR, offset); SimpleDateFormat("EEE d", Locale.getDefault()).format(it.time) }
+}
+
+private fun dayTitle(offset: Int): String = when (offset) {
+    -1 -> "Yesterday"; 0 -> "Today"; 1 -> "Tomorrow"
+    else -> Calendar.getInstance().let { it.add(Calendar.DAY_OF_YEAR, offset); SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(it.time) }
+}
+
 fun Game.statusText(): String = when (state) {
     "pre" -> gameTime(startMs).ifBlank { detail }
     else -> detail
@@ -124,14 +147,14 @@ fun SportsScreen(state: AppState) {
     LaunchedEffect(Unit) { while (true) { delay(60_000); refresh++ } }
     LaunchedEffect(Unit) { repo?.let { r -> runCatching { r.guideIndex() } } }
 
-    val yesterday = remember {
-        java.text.SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(System.currentTimeMillis() - 86_400_000L))
-    }
+    // Day picker: yesterday, today and the next five days.
+    var dayOffset by rememberSaveable { mutableIntStateOf(0) }
     val mine by rememberLoad(favs, refresh) { app.sports.favoriteGames(favs) }
-    val boards by rememberLoad(leagueKeys, refresh) {
+    val boards by rememberLoad(leagueKeys, refresh, dayOffset) {
+        val date = dayKey(dayOffset)
         coroutineScope {
             teamLeagues.map { l ->
-                async { Triple(l, app.sports.scoreboard(l), app.sports.scoreboard(l, yesterday)) }
+                async { l to app.sports.scoreboard(l, date).filter { g -> g.isLive && dayOffset == 0 || isOnDay(g.startMs, dayOffset) } }
             }.awaitAll()
         }
     }
@@ -253,32 +276,45 @@ fun SportsScreen(state: AppState) {
                     items(leagues, key = { it.key }) { l -> CategoryChip(l.short, filter == l.key) { filter = l.key } }
                 }
             }
+            // Day picker
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                LazyRow(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items((-1..5).toList(), key = { "d$it" }) { d -> Pill(dayChipLabel(d), dayOffset == d, onClick = { dayOffset = d }) }
+                }
+            }
 
             when (val b = boards) {
                 is Load.Ok -> {
                     val groups = b.value.filter { filter == null || it.first.key == filter }
-                    val live = groups.flatMap { it.second }.filter { it.isLive }
+                    val live = if (dayOffset == 0) groups.flatMap { it.second }.filter { it.isLive } else emptyList()
                     if (live.isNotEmpty()) {
                         item(span = { GridItemSpan(maxLineSpan) }) { SectionLabel("LIVE NOW") }
                         items(live, key = { "live-" + it.id }) { g ->
                             GameRow(g, g.hasFavorite(favs), hide, selected.any { it.id == g.id }, onClick = { open(g) }, onLongClick = { starFor = g })
                         }
                     }
-                    groups.forEach { (l, today, yday) ->
-                        val later = today.filter { !it.isLive }
-                        if (later.isEmpty() && yday.isEmpty()) return@forEach
-                        item(span = { GridItemSpan(maxLineSpan) }, key = "h-" + l.key) { SectionLabel(l.name.uppercase()) }
-                        if (later.isNotEmpty()) {
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "t-" + l.key) { SubLabel("Today") }
-                            items(later, key = { l.key + "-t-" + it.id }) { g ->
-                                GameRow(g, g.hasFavorite(favs), hide, selected.any { it.id == g.id }, onClick = { open(g) }, onLongClick = { starFor = g })
+                    val past = dayOffset < 0
+                    var any = live.isNotEmpty()
+                    groups.forEach { (l, games) ->
+                        val list = games.filter { !(dayOffset == 0 && it.isLive) }
+                        if (list.isEmpty()) return@forEach
+                        any = true
+                        item(span = { GridItemSpan(maxLineSpan) }, key = "h-" + l.key) {
+                            Column {
+                                SectionLabel(l.name.uppercase())
+                                SubLabel(dayTitle(dayOffset) + " · ${list.size} game${if (list.size == 1) "" else "s"}")
                             }
                         }
-                        if (yday.isNotEmpty()) {
-                            item(span = { GridItemSpan(maxLineSpan) }, key = "y-" + l.key) { SubLabel("Yesterday") }
-                            items(yday, key = { l.key + "-y-" + it.id }) { g ->
-                                GameRow(g, g.hasFavorite(favs), hide, false, onClick = { if (!selecting) state.push(Route.GameDetail(g)) }, onLongClick = { starFor = g })
-                            }
+                        items(list, key = { l.key + "-" + dayOffset + "-" + it.id }) { g ->
+                            GameRow(g, g.hasFavorite(favs), hide, !past && selected.any { it.id == g.id },
+                                onClick = { if (past) { if (!selecting) state.push(Route.GameDetail(g)) } else open(g) },
+                                onLongClick = { starFor = g })
+                        }
+                    }
+                    if (!any && teamLeagues.isNotEmpty()) {
+                        item(span = { GridItemSpan(maxLineSpan) }) {
+                            Text("No ${filter?.let { k -> leagues.firstOrNull { it.key == k }?.short + " " } ?: ""}games ${dayTitle(dayOffset).lowercase().let { if (dayOffset in -1..1) it else "on $it" }}.",
+                                color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(vertical = 12.dp))
                         }
                     }
                     if (teamLeagues.isEmpty() && !leagueKeys.contains("f1")) {

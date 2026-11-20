@@ -32,6 +32,15 @@ class ProfileSettings(context: Context, val profileId: String) {
         get() = pp.getFloat("alpha", 1f)
         set(v) = pp.edit().putFloat("alpha", v).apply()
 
+    // ---- Content ----
+    var showAdult: Boolean
+        get() = pp.getBoolean("showAdult", false)
+        set(v) = pp.edit().putBoolean("showAdult", v).apply()
+    /** Home sections turned off (see HomeLayout). */
+    var homeHidden: Set<String>
+        get() = pp.getString("homeHidden", "")!!.split('|').filter { it.isNotBlank() }.toSet()
+        set(v) = pp.edit().putString("homeHidden", v.joinToString("|")).apply()
+
     // ---- Kids rules ----
     /** Minutes per day; 0 = no limit. */
     var dailyLimitMin: Int
