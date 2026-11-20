@@ -46,6 +46,8 @@ class DekStreamApp : Application() {
 
     /** Channel to open once signed in (from a reminder notification). */
     var pendingPlayStream by mutableStateOf<Int?>(null)
+    /** Debug test hook: tab to open (see MainActivity.handleTestIntent). */
+    var pendingTab by mutableStateOf<com.dekstream.tv.ui.Tab?>(null)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
