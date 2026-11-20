@@ -1,6 +1,8 @@
 package com.dekstream.tv.data
 
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 
@@ -48,13 +50,10 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
         val names = prefs.channelNames
         val nums = prefs.channelNumbers
         val ov = prefs.epgOverrides
-        val adultCats = if (ContentFilter.showAdult) emptySet()
-            else rawLiveCategories().filter { ContentFilter.isAdult(it.name) }.map { it.id }.toSet()
-        val filterAdult = !ContentFilter.showAdult
-        if (hidden.isEmpty() && hiddenCats.isEmpty() && names.isEmpty() && nums.isEmpty() && ov.isEmpty() && !filterAdult) return raw
-        return raw.asSequence()
-            .filter { it.streamId !in hidden && ("l:" + it.categoryId) !in hiddenCats }
-            .filter { !filterAdult || (it.categoryId !in adultCats && !ContentFilter.isAdult(it.name)) }
+        val adult = if (ContentFilter.showAdult) emptySet() else adultChannelIds(raw)
+        if (hidden.isEmpty() && hiddenCats.isEmpty() && names.isEmpty() && nums.isEmpty() && ov.isEmpty() && adult.isEmpty()) return raw
+        return withContext(Dispatchers.Default) { raw.asSequence()
+            .filter { it.streamId !in hidden && ("l:" + it.categoryId) !in hiddenCats && it.streamId !in adult }
             .map { c ->
                 if (c.streamId !in names && c.streamId !in nums && c.streamId !in ov) c
                 else c.copy(
@@ -62,8 +61,23 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
                     num = nums[c.streamId] ?: c.num,
                     epgChannelId = ov[c.streamId] ?: c.epgChannelId,
                 )
-            }.toList()
+            }.toList() }
     }
+
+    // Adult detection runs once per playlist load, off the main thread, then it's a set lookup.
+    @Volatile private var adultFor: List<Channel>? = null
+    @Volatile private var adultIds: Set<Int> = emptySet()
+    private suspend fun adultChannelIds(raw: List<Channel>): Set<Int> {
+        if (adultFor === raw) return adultIds
+        val cats = rawLiveCategories().filter { ContentFilter.isAdult(it.name) }.map { it.id }.toSet()
+        val ids = withContext(Dispatchers.Default) {
+            raw.asSequence().filter { it.categoryId in cats || ContentFilter.isAdult(it.name) }.map { it.streamId }.toHashSet()
+        }
+        adultIds = ids; adultFor = raw
+        return ids
+    }
+    private val vodClean = ConcurrentHashMap<String, List<Vod>>()
+    private val seriesClean = ConcurrentHashMap<String, List<Series>>()
 
     suspend fun channels(categoryId: String): List<Channel> = allChannels().filter { it.categoryId == categoryId }
 
@@ -103,11 +117,13 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
 
     suspend fun vods(categoryId: String): List<Vod> =
         (vodByCat[categoryId] ?: provider.vods(categoryId).also { vodByCat[categoryId] = it })
-            .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
+            .let { l -> if (ContentFilter.showAdult) l else vodClean[categoryId]
+                ?: withContext(Dispatchers.Default) { l.filter { !ContentFilter.isAdult(it.name) } }.also { vodClean[categoryId] = it } }
 
     suspend fun series(categoryId: String): List<Series> =
         (seriesByCat[categoryId] ?: provider.series(categoryId).also { seriesByCat[categoryId] = it })
-            .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
+            .let { l -> if (ContentFilter.showAdult) l else seriesClean[categoryId]
+                ?: withContext(Dispatchers.Default) { l.filter { !ContentFilter.isAdult(it.name) } }.also { seriesClean[categoryId] = it } }
 
     private val vodInfoCache = ConcurrentHashMap<Int, VodInfo?>()
     suspend fun vodInfo(v: Vod): VodInfo? {

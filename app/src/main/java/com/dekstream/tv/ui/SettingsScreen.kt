@@ -117,6 +117,17 @@ fun SettingsScreen(state: AppState) {
             BrandMark(32.dp, nameSize = 18)
             InfoLine("Version", BuildConfig.VERSION_NAME)
         }
+        val crashFile = java.io.File(app.filesDir, "last_crash.txt")
+        var crash by remember { mutableStateOf(runCatching { crashFile.takeIf { it.exists() }?.readText() }.getOrNull()) }
+        crash?.let { text ->
+            SectionTitle("Last crash")
+            Card {
+                Text(text.lines().take(18).joinToString("\n"), color = DS.TextDim, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Row(Modifier.padding(top = 10.dp)) {
+                    CategoryChip("Clear", false) { crashFile.delete(); crash = null }
+                }
+            }
+        }
     }
     if (adultAsk) {
         ParentGate(requireSetup = false, reason = "Show adult content on this profile.", onDismiss = { adultAsk = false }) {

@@ -73,6 +73,15 @@ class DekStreamApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // Keep the last crash so it can be shown in Settings > About (and sent to us).
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e ->
+            runCatching {
+                java.io.File(filesDir, "last_crash.txt").writeText(
+                    "DekTV ${com.dekstream.tv.BuildConfig.VERSION_NAME} · ${java.util.Date()}\n" + android.util.Log.getStackTraceString(e))
+            }
+            previous?.uncaughtException(t, e)
+        }
         http = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)
