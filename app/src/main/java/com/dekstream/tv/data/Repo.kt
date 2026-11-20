@@ -128,11 +128,14 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
             .let { l -> if (ContentFilter.showAdult) l else seriesClean[categoryId]
                 ?: withContext(Dispatchers.Default) { l.filter { !ContentFilter.isAdult(it.name) } }.also { seriesClean[categoryId] = it } }
 
-    private val vodInfoCache = ConcurrentHashMap<Int, VodInfo?>()
+    // ConcurrentHashMap can't hold nulls, so "no info" is remembered in its own set.
+    private val vodInfoCache = ConcurrentHashMap<Int, VodInfo>()
+    private val vodInfoMissing = ConcurrentHashMap.newKeySet<Int>()
     suspend fun vodInfo(v: Vod): VodInfo? {
-        if (vodInfoCache.containsKey(v.streamId)) return vodInfoCache[v.streamId]
+        vodInfoCache[v.streamId]?.let { return it }
+        if (v.streamId in vodInfoMissing) return null
         val i = runCatching { io { provider.vodInfo(v) } }.getOrNull()
-        vodInfoCache[v.streamId] = i
+        if (i != null) vodInfoCache[v.streamId] = i else vodInfoMissing += v.streamId
         return i
     }
     suspend fun seriesInfo(s: Series) = io { provider.seriesInfo(s) }
