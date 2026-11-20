@@ -1,6 +1,13 @@
 package com.dekstream.tv.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.UnfoldMore
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -29,7 +36,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,54 +82,119 @@ private fun TabContent(state: AppState) {
     }
 }
 
+/** Sidebar groups, HolyArrs style: unlabeled top group, then labeled sections. */
+private val sidebarGroups: List<Pair<String?, List<Tab>>> = listOf(
+    null to listOf(Tab.Home, Tab.Search),
+    "Watch" to listOf(Tab.Live, Tab.Guide, Tab.Sports, Tab.Multiview),
+    "Library" to listOf(Tab.Movies, Tab.Series),
+    "Manage" to listOf(Tab.Settings),
+)
+
 @Composable
 private fun SideRail(state: AppState) {
-    Column(
-        Modifier
-            .width(84.dp)
-            .fillMaxHeight()
-            .background(Brush.horizontalGradient(listOf(Appearance.palette.surface, Appearance.palette.bg)))
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 14.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        BrandMark(36.dp, showName = false)
-        Spacer(Modifier.height(18.dp))
-        visibleTabs().forEach { t ->
-            val selected = state.tab == t
-            var focused by remember { mutableStateOf(false) }
-            val shape = RoundedCornerShape(14.dp)
-            Column(
-                Modifier
-                    .padding(vertical = 3.dp)
-                    .width(68.dp)
-                    .onFocusChanged { focused = it.isFocused }
-                    .clip(shape)
-                    .background(
-                        when {
-                            focused -> Color.White
-                            selected -> DS.AccentSoft
-                            else -> Color.Transparent
+    val collapsed = Appearance.sidebarCollapsed
+    val visible = visibleTabs()
+    Row(Modifier.fillMaxHeight()) {
+        Column(
+            Modifier
+                .width(if (collapsed) 76.dp else 228.dp)
+                .fillMaxHeight()
+                .background(if (DS.Light) Color(0xFFFAFAFB) else Appearance.palette.surface.copy(alpha = 0.55f))
+                .padding(horizontal = 12.dp, vertical = 14.dp),
+            horizontalAlignment = if (collapsed) Alignment.CenterHorizontally else Alignment.Start,
+        ) {
+            // Brand + collapse toggle
+            Row(Modifier.fillMaxWidth().padding(start = if (collapsed) 0.dp else 6.dp, bottom = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start) {
+                if (!collapsed) {
+                    BrandMark(26.dp, nameSize = 18)
+                    Spacer(Modifier.weight(1f))
+                }
+                val shape = RoundedCornerShape(10.dp)
+                Box(
+                    Modifier.size(32.dp).focusRing(shape).clip(shape).background(DS.Card).border(1.dp, DS.Line, shape)
+                        .clickable { Appearance.sidebarCollapsed = !collapsed },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(if (collapsed) Icons.AutoMirrored.Filled.KeyboardArrowRight else Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                        "Toggle sidebar", tint = DS.TextDim, modifier = Modifier.size(18.dp))
+                }
+            }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                sidebarGroups.forEach { (label, tabs) ->
+                    val shown = tabs.filter { it in visible }
+                    if (shown.isEmpty()) return@forEach
+                    if (label != null) {
+                        if (collapsed) Box(Modifier.padding(vertical = 8.dp).align(Alignment.CenterHorizontally).width(24.dp).height(1.dp).background(DS.Line))
+                        else Text(label, color = DS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(start = 10.dp, top = 16.dp, bottom = 6.dp))
+                    }
+                    shown.forEach { t -> SidebarItem(t, state.tab == t, collapsed) { state.tab = t } }
+                }
+            }
+            // Profile card at the bottom
+            com.dekstream.tv.DekStreamApp.instance.session?.let { s ->
+                var focused by remember { mutableStateOf(false) }
+                val shape = RoundedCornerShape(12.dp)
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 10.dp).onFocusChanged { focused = it.isFocused }
+                        .clip(shape).background(if (focused) DS.Invert else if (state.tab == Tab.Profile) DS.Card else Color.Transparent)
+                        .clickable { state.tab = Tab.Profile }.padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start,
+                ) {
+                    Avatar(s.profile, 34.dp)
+                    if (!collapsed) {
+                        Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                            Text(s.profile.name, color = if (focused) DS.OnInvert else DS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Text(s.source.name, color = if (focused) DS.OnInvert.copy(alpha = 0.7f) else DS.TextDim, fontSize = 12.sp, maxLines = 1,
+                                overflow = TextOverflow.Ellipsis)
                         }
-                    )
-                    .clickable { state.tab = t }
-                    .padding(vertical = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Icon(
-                    t.icon, contentDescription = t.label,
-                    tint = when { focused -> Color.Black; selected -> DS.Accent; else -> DS.TextDim },
-                    modifier = Modifier.size(24.dp),
-                )
-                Text(
-                    t.label, fontSize = 10.sp, maxLines = 1,
-                    color = when { focused -> Color.Black; selected -> DS.Text; else -> DS.TextDim },
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    modifier = Modifier.padding(top = 3.dp),
-                )
+                        Icon(Icons.Default.UnfoldMore, null, tint = if (focused) DS.OnInvert else DS.TextDim, modifier = Modifier.size(18.dp))
+                    }
+                }
             }
         }
-        Spacer(Modifier.height(16.dp))
+        Box(Modifier.fillMaxHeight().width(1.dp).background(DS.Line))
+    }
+}
+
+@Composable
+private fun SidebarItem(t: Tab, selected: Boolean, collapsed: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Row(
+        Modifier
+            .padding(vertical = 1.dp)
+            .then(if (collapsed) Modifier.size(48.dp) else Modifier.fillMaxWidth())
+            .onFocusChanged { focused = it.isFocused }
+            .clip(shape)
+            .background(
+                when {
+                    focused -> DS.Invert
+                    selected -> if (DS.Light) Color(0xFFEDEDF0) else Appearance.palette.surface2
+                    else -> Color.Transparent
+                }
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = if (collapsed) 0.dp else 10.dp, vertical = if (collapsed) 0.dp else 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start,
+    ) {
+        Icon(
+            t.icon, contentDescription = t.label,
+            tint = when { focused -> DS.OnInvert; selected -> DS.Accent; else -> DS.TextDim },
+            modifier = Modifier.size(20.dp),
+        )
+        if (!collapsed) {
+            Text(
+                t.label, fontSize = 14.sp, maxLines = 1,
+                color = when { focused -> DS.OnInvert; else -> DS.Text },
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
     }
 }
 
