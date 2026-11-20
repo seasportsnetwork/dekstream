@@ -23,15 +23,18 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     private val epgShort = ConcurrentHashMap<Int, Pair<Long, List<Program>>>()
     private val epgFull = ConcurrentHashMap<Int, Pair<Long, List<Program>>>()
 
+    /** Network + parsing off the main thread (big playlists take seconds to parse). */
+    private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) { block() }
+
     // ---- Raw provider data (cached) ----
     suspend fun rawLiveCategories(): List<Category> =
-        if (!source.loadLive) emptyList() else lock.withLock { liveCats ?: provider.liveCategories().also { liveCats = it } }
+        if (!source.loadLive) emptyList() else lock.withLock { liveCats ?: io { provider.liveCategories() }.also { liveCats = it } }
     suspend fun rawVodCategories(): List<Category> =
-        if (!source.loadMovies) emptyList() else lock.withLock { vodCats ?: provider.vodCategories().also { vodCats = it } }
+        if (!source.loadMovies) emptyList() else lock.withLock { vodCats ?: io { provider.vodCategories() }.also { vodCats = it } }
     suspend fun rawSeriesCategories(): List<Category> =
-        if (!source.loadShows) emptyList() else lock.withLock { seriesCats ?: provider.seriesCategories().also { seriesCats = it } }
+        if (!source.loadShows) emptyList() else lock.withLock { seriesCats ?: io { provider.seriesCategories() }.also { seriesCats = it } }
     suspend fun rawChannels(): List<Channel> =
-        if (!source.loadLive) emptyList() else allLock.withLock { allLive ?: provider.allChannels().also { allLive = it } }
+        if (!source.loadLive) emptyList() else allLock.withLock { allLive ?: io { provider.allChannels() }.also { allLive = it } }
 
     // ---- What this profile sees: hidden items removed, renames/numbers/guide matches applied ----
     private fun viewCats(list: List<Category>, prefix: String) = list
@@ -116,23 +119,23 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     fun clearEpgCache() { epgShort.clear(); epgFull.clear() }
 
     suspend fun vods(categoryId: String): List<Vod> =
-        (vodByCat[categoryId] ?: provider.vods(categoryId).also { vodByCat[categoryId] = it })
+        (vodByCat[categoryId] ?: io { provider.vods(categoryId) }.also { vodByCat[categoryId] = it })
             .let { l -> if (ContentFilter.showAdult) l else vodClean[categoryId]
                 ?: withContext(Dispatchers.Default) { l.filter { !ContentFilter.isAdult(it.name) } }.also { vodClean[categoryId] = it } }
 
     suspend fun series(categoryId: String): List<Series> =
-        (seriesByCat[categoryId] ?: provider.series(categoryId).also { seriesByCat[categoryId] = it })
+        (seriesByCat[categoryId] ?: io { provider.series(categoryId) }.also { seriesByCat[categoryId] = it })
             .let { l -> if (ContentFilter.showAdult) l else seriesClean[categoryId]
                 ?: withContext(Dispatchers.Default) { l.filter { !ContentFilter.isAdult(it.name) } }.also { seriesClean[categoryId] = it } }
 
     private val vodInfoCache = ConcurrentHashMap<Int, VodInfo?>()
     suspend fun vodInfo(v: Vod): VodInfo? {
         if (vodInfoCache.containsKey(v.streamId)) return vodInfoCache[v.streamId]
-        val i = runCatching { provider.vodInfo(v) }.getOrNull()
+        val i = runCatching { io { provider.vodInfo(v) } }.getOrNull()
         vodInfoCache[v.streamId] = i
         return i
     }
-    suspend fun seriesInfo(s: Series) = provider.seriesInfo(s)
+    suspend fun seriesInfo(s: Series) = io { provider.seriesInfo(s) }
 
     /** Guide entries from the whole-guide index for channels matched by hand. */
     private suspend fun overrideEpg(c: Channel): List<Program>? {
@@ -145,7 +148,7 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     suspend fun nowNext(c: Channel): List<Program> {
         val now = System.currentTimeMillis()
         epgShort[c.streamId]?.let { (t, l) -> if (now - t < 5 * 60_000) return l }
-        val l = (overrideEpg(c) ?: runCatching { provider.shortEpg(c) }.getOrDefault(emptyList())).filter { it.endMs > now }.take(3)
+        val l = (overrideEpg(c) ?: runCatching { io { provider.shortEpg(c) } }.getOrDefault(emptyList())).filter { it.endMs > now }.take(3)
         epgShort[c.streamId] = now to l
         return l
     }
@@ -154,7 +157,7 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     suspend fun fullEpg(c: Channel): List<Program> {
         val now = System.currentTimeMillis()
         epgFull[c.streamId]?.let { (t, l) -> if (now - t < 30 * 60_000) return l }
-        val l = overrideEpg(c) ?: runCatching { provider.fullEpg(c) }.getOrDefault(emptyList())
+        val l = overrideEpg(c) ?: runCatching { io { provider.fullEpg(c) } }.getOrDefault(emptyList())
         epgFull[c.streamId] = now to l
         return l
     }
