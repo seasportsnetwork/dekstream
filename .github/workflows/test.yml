@@ -69,3 +69,4 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat smoke/summary.txt >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "no summary" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          grep -q "RESULT: PASS" smoke/summary.txt
