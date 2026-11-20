@@ -18,6 +18,8 @@ step()  { echo "== $1"; echo "$1" >> $OUT/steps.txt; }
 adb install -r $APK || exit 1
 adb logcat -c
 adb shell wm size 1920x1080 >/dev/null 2>&1
+adb shell setprop persist.sys.timezone America/New_York >/dev/null 2>&1
+adb shell cmd alarm set-timezone America/New_York >/dev/null 2>&1 || adb shell service call alarm 3 s16 America/New_York >/dev/null 2>&1
 
 step "launch + test playlist"
 start --es test_m3u "$M3U" --es test_tab Home
