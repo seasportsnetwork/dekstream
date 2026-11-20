@@ -49,6 +49,27 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(i: Intent?) {
         val id = i?.getIntExtra(EXTRA_PLAY_STREAM, -1) ?: -1
         if (id >= 0) DekStreamApp.instance.pendingPlayStream = id
+        if (com.dekstream.tv.BuildConfig.DEBUG) handleTestIntent(i)
+    }
+
+    /**
+     * Debug builds only, for the automated emulator test (ci/smoke.sh):
+     * test_m3u = set up a test profile with this playlist; test_tab = open this tab; test_palette = palette index.
+     */
+    private fun handleTestIntent(i: Intent?) {
+        val app = DekStreamApp.instance
+        i?.getStringExtra("test_m3u")?.let { url ->
+            if (app.store.profiles.value.isEmpty()) {
+                val src = com.dekstream.tv.data.Source(name = "Test playlist", type = com.dekstream.tv.data.SourceType.M3U_URL, url = url,
+                    epgUrl = i.getStringExtra("test_epg") ?: "")
+                app.store.saveSource(src)
+                val p = com.dekstream.tv.data.Profile(name = "Tester", color = com.dekstream.tv.data.Profile.Colors[0], sourceId = src.id)
+                app.store.saveProfile(p)
+                app.start(p)
+            } else if (app.session == null) app.store.profiles.value.firstOrNull()?.let { app.start(it) }
+        }
+        i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
+        i?.getIntExtra("test_palette", -1)?.takeIf { it >= 0 }?.let { Appearance.paletteIdx = it }
     }
 
     fun askNotificationPermission() {
@@ -99,6 +120,14 @@ private fun SignedIn() {
     val app = DekStreamApp.instance
     val state = remember { AppState() }
     val top = state.stack.lastOrNull()
+
+    // Debug test hook: jump to a tab.
+    val pendingTab = app.pendingTab
+    LaunchedEffect(pendingTab) {
+        val t = pendingTab ?: return@LaunchedEffect
+        app.pendingTab = null
+        state.stack.clear(); state.tab = t
+    }
 
     // Open a channel from a reminder notification.
     val pending = app.pendingPlayStream
