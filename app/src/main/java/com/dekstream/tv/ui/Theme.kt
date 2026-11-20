@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -26,7 +27,7 @@ import androidx.compose.ui.unit.dp
 
 /** Look & feel choices (per profile). Compose observes these, so changes apply instantly. */
 object Appearance {
-    data class Palette(val name: String, val bg: Color, val surface: Color, val surface2: Color)
+    data class Palette(val name: String, val bg: Color, val surface: Color, val surface2: Color, val light: Boolean = false)
 
     val accents = listOf(
         "Red" to Color(0xFFE50914), "Amber" to Color(0xFFFFB020), "Blue" to Color(0xFF2D7FF9),
@@ -37,6 +38,7 @@ object Appearance {
         Palette("Midnight", Color(0xFF070B1A), Color(0xFF10172F), Color(0xFF19223F)),
         Palette("Black", Color(0xFF000000), Color(0xFF0F0F11), Color(0xFF1B1B1F)),
         Palette("Slate", Color(0xFF14171C), Color(0xFF1F242C), Color(0xFF2A313B)),
+        Palette("Light", Color(0xFFF4F4F6), Color(0xFFFFFFFF), Color(0xFFEAEAEE), light = true),
     )
     /** How the focused item is highlighted when using a remote. */
     val selections = listOf("White outline", "Accent outline", "Glow")
@@ -56,6 +58,8 @@ object Appearance {
     var guideBgIdx by mutableIntStateOf(0)
     /** 0.55 (see-through panels) .. 1.0 (solid). */
     var panelAlpha by mutableFloatStateOf(1f)
+    /** Wide screens: sidebar shows icons only. */
+    var sidebarCollapsed by mutableStateOf(false)
 
     val palette get() = palettes.getOrElse(paletteIdx) { palettes[0] }
     val accent get() = accents.getOrElse(accentIdx) { accents[0] }.second
@@ -68,16 +72,35 @@ object DS {
     val Surface2: Color get() = Appearance.palette.surface2.copy(alpha = (Appearance.panelAlpha + 0.1f).coerceAtMost(1f))
     val Accent: Color get() = Appearance.accent
     val AccentSoft: Color get() = Appearance.accent.copy(alpha = 0.22f)
-    val Text = Color(0xFFF2F4F8)
-    val TextDim = Color(0xFF9AA3B2)
+    val Light: Boolean get() = Appearance.palette.light
+    val Text: Color get() = if (Light) Color(0xFF15171C) else Color(0xFFF2F4F8)
+    val TextDim: Color get() = if (Light) Color(0xFF6B7080) else Color(0xFF9AA3B2)
+    /** Hairline borders on cards and the sidebar. */
+    val Line: Color get() = if (Light) Color(0x14000000) else Color(0x14FFFFFF)
+    /** Raised card (bento tiles, sidebar items). */
+    val Card: Color get() = if (Light) Color.White else Appearance.palette.surface.copy(alpha = Appearance.panelAlpha)
     val Live = Color(0xFFFF3B30)
-    val Focus: Color get() = if (Appearance.selectionIdx == 1) Appearance.accent else Color.White
+    val Focus: Color get() = if (Appearance.selectionIdx == 1) Appearance.accent else if (Light) Color(0xFF15171C) else Color.White
+    /** Inverted pill (focused nav item, primary buttons). */
+    val Invert: Color get() = if (Light) Color(0xFF15171C) else Color.White
+    val OnInvert: Color get() = if (Light) Color.White else Color(0xFF111111)
+    val R = 18.dp
 }
 
 @Composable
 fun DekStreamTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = darkColorScheme(
+        colorScheme = if (DS.Light) lightColorScheme(
+            primary = DS.Accent,
+            onPrimary = Color.White,
+            secondary = DS.Accent,
+            background = DS.Bg,
+            surface = Appearance.palette.surface,
+            surfaceVariant = Appearance.palette.surface2,
+            onBackground = DS.Text,
+            onSurface = DS.Text,
+            onSurfaceVariant = DS.TextDim,
+        ) else darkColorScheme(
             primary = DS.Accent,
             onPrimary = Color.White,
             secondary = DS.Accent,

@@ -11,6 +11,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CalendarViewWeek
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.SportsFootball
+import com.dekstream.tv.data.Game
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -77,33 +88,41 @@ fun HomeScreen(state: AppState) {
 
     // A couple of movie and series rows to make Home feel alive.
     val movieRows by rememberLoad(Unit) {
-        repo.vodCategories().take(2).map { c -> c.name to repo.vods(c.id).filter { it.poster != null }.take(30) }.filter { it.second.isNotEmpty() }
+        repo.vodCategories().take(2).map { c -> c to repo.vods(c.id).filter { it.poster != null }.take(30) }.filter { it.second.isNotEmpty() }
     }
     val seriesRows by rememberLoad(Unit) {
-        repo.seriesCategories().take(2).map { c -> c.name to repo.series(c.id).filter { it.cover != null }.take(30) }.filter { it.second.isNotEmpty() }
+        repo.seriesCategories().take(2).map { c -> c to repo.series(c.id).filter { it.cover != null }.take(30) }.filter { it.second.isNotEmpty() }
+    }
+    // Mood / genre tiles: movie categories with the first poster as art.
+    val moods by rememberLoad(Unit) {
+        repo.vodCategories().take(8).mapNotNull { c ->
+            val art = runCatching { repo.vods(c.id).firstOrNull { it.poster != null }?.poster }.getOrNull()
+            Mood(c, cleanCategoryName(c.name), art)
+        }
     }
 
     val channels = all.valueOrNull().orEmpty()
     val byId = channels.associateBy { it.streamId }
     val liveNow = (favIds.mapNotNull { byId[it] } + recentIds.mapNotNull { byId[it] }).distinctBy { it.streamId }.take(20)
     val cont = progress.values.sortedByDescending { it.updatedAt }
+    val games = sports.valueOrNull().orEmpty()
 
     // Featured: continue watching + new movies/series with wide art (looked up in the background).
     val featured by produceState<List<Featured>>(emptyList(), movieRows, seriesRows, cont.size) {
         val out = ArrayList<Featured>()
-        cont.take(3).forEach { p ->
+        cont.take(2).forEach { p ->
             out += Featured(
-                HeroItem("c-" + p.key, p.title, p.poster, meta = p.subtitle ?: "Continue watching", badge = "CONTINUE",
+                HeroItem("c-" + p.key, p.title, p.poster, meta = p.subtitle ?: "Pick up where you left off", badge = "Continue watching",
                     imageIsPoster = true, progress = p.fraction),
                 onPlay = { state.play(resumeRequest(p)) }, onInfo = null,
             )
         }
-        movieRows.valueOrNull()?.firstOrNull()?.second?.take(5)?.forEach { v ->
+        movieRows.valueOrNull()?.firstOrNull()?.second?.take(4)?.forEach { v ->
             val info = repo.vodInfo(v)
             out += Featured(
                 HeroItem("v-${v.streamId}", v.name, info?.backdrop ?: v.poster,
                     meta = listOfNotNull(info?.releaseDate?.take(4), info?.genre, info?.rating?.let { "★ $it" }).joinToString("  ·  ").ifBlank { null },
-                    description = info?.plot, badge = "MOVIE", imageIsPoster = info?.backdrop == null),
+                    description = info?.plot, badge = "New movie", imageIsPoster = info?.backdrop == null),
                 onPlay = { state.play(repo.vodRequest(v)) }, onInfo = { state.push(Route.MovieDetail(v)) },
             )
         }
@@ -111,124 +130,151 @@ fun HomeScreen(state: AppState) {
             out += Featured(
                 HeroItem("s-${s.seriesId}", s.name, s.backdrop ?: s.cover,
                     meta = listOfNotNull(s.releaseDate?.take(4), s.genre, s.rating?.let { "★ $it" }).joinToString("  ·  ").ifBlank { null },
-                    description = s.plot, badge = "SERIES", imageIsPoster = s.backdrop == null),
+                    description = s.plot, badge = "Series", imageIsPoster = s.backdrop == null),
                 onPlay = { state.push(Route.SeriesDetail(s)) }, onInfo = { state.push(Route.SeriesDetail(s)) },
             )
         }
         value = out
     }
-
-    // Header follows focus; when nothing is focused it rotates through the featured titles.
-    var focusedHero by remember { mutableStateOf<Featured?>(null) }
     var rotate by remember { mutableIntStateOf(0) }
-    var lastFocus by remember { mutableLongStateOf(0L) }
+    var holdRotate by remember { mutableLongStateOf(0L) }
     LaunchedEffect(featured.size) {
         while (true) {
-            delay(8_000)
-            if (System.currentTimeMillis() - lastFocus > 12_000) { focusedHero = null; rotate++ }
+            delay(9_000)
+            if (System.currentTimeMillis() - holdRotate > 15_000) rotate++
         }
     }
-    val current = focusedHero ?: featured.getOrNull(if (featured.isEmpty()) 0 else rotate % featured.size)
-    fun focus(f: Featured) { focusedHero = f; lastFocus = System.currentTimeMillis() }
+    val current = featured.getOrNull(if (featured.isEmpty()) 0 else rotate % featured.size)
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val heroH = (maxHeight * 0.56f).coerceIn(280.dp, 520.dp)
+    val nextGame = games.map { it.second }.let { g -> g.firstOrNull { it.isLive } ?: g.filter { it.state == "pre" }.minByOrNull { it.startMs } }
+    val onNowChannel = liveNow.firstOrNull()
+    val playLive: (Channel) -> Unit = { c -> app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c), liveNow) }
+
+    BoxWithConstraints(Modifier.fillMaxSize().background(DS.Bg)) {
         val wide = maxWidth >= 720.dp
-        HeroBackdrop(current?.hero, Modifier.fillMaxWidth().height(heroH + 80.dp))
-
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
-            // Header: brand + profile, then featured info and buttons
+        val pad = if (wide) 32.dp else 18.dp
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 36.dp)) {
+            // Floating search + greeting
             item {
-                Column(
-                    Modifier.fillMaxWidth().heightIn(min = heroH).padding(start = 36.dp, end = 36.dp, top = 22.dp),
-                    verticalArrangement = Arrangement.Bottom,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (!wide) BrandMark(32.dp, nameSize = 20)
-                        Spacer(Modifier.weight(1f))
-                        app.session?.let { s ->
-                            Row(
-                                Modifier.focusRing(RoundedCornerShape(20.dp)).clip(RoundedCornerShape(20.dp))
-                                    .clickable { state.tab = Tab.Profile }.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                Text(s.profile.name, color = DS.Text.copy(alpha = 0.85f), fontSize = 14.sp, modifier = Modifier.padding(end = 8.dp))
-                                Avatar(s.profile, 30.dp)
+                Column(Modifier.fillMaxWidth().padding(horizontal = pad).padding(top = 18.dp)) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        SearchBarPill(onClick = { state.tab = Tab.Search })
+                    }
+                    Row(Modifier.fillMaxWidth().padding(top = 22.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (!wide) { BrandMark(28.dp, showName = false); Spacer(Modifier.width(10.dp)) }
+                        Text(greeting(app.session?.profile?.name), color = DS.Text, fontSize = if (wide) 32.sp else 24.sp,
+                            fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.5).sp, modifier = Modifier.weight(1f),
+                            maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (!wide) app.session?.let { s ->
+                            Box(Modifier.focusRing(RoundedCornerShape(10.dp)).clip(RoundedCornerShape(10.dp)).clickable { state.tab = Tab.Profile }) {
+                                Avatar(s.profile, 32.dp)
                             }
                         }
                     }
-                    Spacer(Modifier.height(if (wide) heroH * 0.22f else 24.dp))
-                    HeroInfo(current?.hero) {
-                        current?.let { f ->
-                            Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Button(
-                                    onClick = f.onPlay,
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
-                                    modifier = Modifier.focusRing(RoundedCornerShape(10.dp)).onFocusChanged { if (it.isFocused) lastFocus = System.currentTimeMillis() },
-                                ) {
-                                    Icon(Icons.Default.PlayArrow, null, modifier = Modifier.size(20.dp))
-                                    Text(if (f.hero.badge == "CONTINUE") " Resume" else if (f.hero.badge == "SERIES") " Episodes" else " Play",
-                                        fontWeight = FontWeight.SemiBold)
-                                }
-                                f.onInfo?.let { info ->
-                                    Button(
-                                        onClick = info,
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color.White.copy(alpha = 0.18f), contentColor = Color.White),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                        modifier = Modifier.focusRing(RoundedCornerShape(10.dp)),
-                                    ) {
-                                        Icon(Icons.Default.Info, null, modifier = Modifier.size(18.dp))
-                                        Text(" More info")
-                                    }
-                                }
-                            }
+                    Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Segmented(
+                            listOf("Home" to Icons.Default.Home, "Live" to Icons.Default.LiveTv, "Guide" to Icons.Default.CalendarViewWeek),
+                            selected = 0,
+                        ) { i -> state.tab = when (i) { 1 -> Tab.Live; 2 -> Tab.Guide; else -> Tab.Home } }
+                        if (wide) {
+                            Text(statusLine(liveNow.size, games.count { it.second.isLive }, nextGame), color = DS.TextDim, fontSize = 13.sp,
+                                modifier = Modifier.padding(start = 14.dp).weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            PillButton("Sports", { state.tab = Tab.Sports }, Icons.Default.SportsFootball)
+                            Spacer(Modifier.width(8.dp))
+                            PillButton("Multiview", { state.tab = Tab.Multiview }, Icons.Default.GridView)
                         }
                     }
-                    // Featured dots
-                    if (featured.size > 1 && focusedHero == null) {
-                        Row(Modifier.padding(top = 14.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            featured.indices.forEach { i ->
-                                val on = i == rotate % featured.size
-                                Box(Modifier.size(if (on) 18.dp else 6.dp, 6.dp).clip(RoundedCornerShape(3.dp))
-                                    .background(if (on) Color.White else Color.White.copy(alpha = 0.35f)))
-                            }
-                        }
-                    } else Spacer(Modifier.height(26.dp))
+                    if (!wide) {
+                        Text(statusLine(liveNow.size, games.count { it.second.isLive }, nextGame), color = DS.TextDim, fontSize = 13.sp,
+                            modifier = Modifier.padding(top = 10.dp))
+                    }
                 }
             }
 
-            // Shortcuts on narrow screens (these tabs aren't in the bottom bar)
-            if (!wide) item {
-                Row(Modifier.padding(start = 28.dp, top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(Tab.Search, Tab.Multiview, Tab.Profile, Tab.Settings).forEach { t ->
-                        val shape = RoundedCornerShape(18.dp)
-                        Row(
-                            Modifier.focusRing(shape).clip(shape).background(DS.Surface.copy(alpha = 0.85f))
-                                .clickable { state.tab = t }.padding(horizontal = 12.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(t.icon, null, tint = DS.TextDim, modifier = Modifier.size(16.dp))
-                            Text(" ${t.label}", color = DS.Text, fontSize = 13.sp)
+            // Bento grid
+            item {
+                val feature: @Composable (Modifier) -> Unit = { m ->
+                    FeatureCard(current, featured.size, if (featured.isEmpty()) 0 else rotate % featured.size, m) { holdRotate = System.currentTimeMillis() }
+                }
+                val upNext: @Composable (Modifier) -> Unit = { m ->
+                    UpNextCard(nextGame, hide, cont.getOrNull(if (current?.hero?.badge == "Continue watching") 1 else 0), m,
+                        onGame = { g -> state.push(Route.GameDetail(g)) },
+                        onResume = { p -> state.play(resumeRequest(p)) },
+                        onGuide = { state.tab = Tab.Guide })
+                }
+                val tall: @Composable (Modifier) -> Unit = { m ->
+                    OnNowCard(onNowChannel, movieRows.valueOrNull()?.firstOrNull()?.second?.firstOrNull(), m,
+                        onPlay = { c -> playLive(c) }, onMovie = { v -> state.push(Route.MovieDetail(v)) }, onLive = { state.tab = Tab.Live })
+                }
+                val tiles = listOf<@Composable (Modifier) -> Unit>(
+                    { m -> StatTile("Live TV", Icons.Default.LiveTv, DS.Live, if (channels.isEmpty()) "–" else "%,d".format(channels.size),
+                        "channels · ${favIds.size} favorites", onClick = { state.tab = Tab.Live }, modifier = m) },
+                    { m -> StatTile("My teams", Icons.Default.SportsFootball, Color(0xFFFF9F0A),
+                        if (favTeams.isEmpty()) "–" else games.size.toString(),
+                        when { favTeams.isEmpty() -> "Pick your teams"; games.isEmpty() -> "No games today"
+                            else -> "games · ${games.count { it.second.isLive }} live now" },
+                        onClick = { state.tab = Tab.Sports }, modifier = m) },
+                    { m -> StatTile("Watching", Icons.Default.History, Color(0xFF2D7FF9), cont.size.toString(),
+                        cont.firstOrNull()?.let { "Last: ${it.title}" } ?: "Nothing in progress",
+                        onClick = { cont.firstOrNull()?.let { state.play(resumeRequest(it)) } ?: run { state.tab = Tab.Movies } },
+                        modifier = m, progress = cont.firstOrNull()?.fraction) },
+                )
+                if (wide) {
+                    Row(Modifier.fillMaxWidth().height(360.dp).padding(horizontal = pad).padding(top = 18.dp)) {
+                        Column(Modifier.weight(1.75f).fillMaxHeight()) {
+                            feature(Modifier.fillMaxWidth().weight(1f))
+                            Spacer(Modifier.height(12.dp))
+                            upNext(Modifier.fillMaxWidth().height(96.dp))
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        tall(Modifier.weight(1f).fillMaxHeight())
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            tiles.forEach { it(Modifier.fillMaxWidth().weight(1f)) }
+                        }
+                    }
+                } else {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = pad).padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        feature(Modifier.fillMaxWidth().height(230.dp))
+                        upNext(Modifier.fillMaxWidth().height(92.dp))
+                        Row(Modifier.fillMaxWidth().height(200.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            tall(Modifier.weight(1f).fillMaxHeight())
+                            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                tiles.take(2).forEach { it(Modifier.fillMaxWidth().weight(1f)) }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Moods
+            val moodList = moods.valueOrNull().orEmpty()
+            if (moodList.isNotEmpty()) {
+                item {
+                    LazyRow(
+                        Modifier.padding(top = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(horizontal = pad),
+                    ) {
+                        items(moodList, key = { it.category.id }) { m ->
+                            val i = moodList.indexOf(m)
+                            MoodTile(if (i % 2 == 0) "Genre" else "Mood", m.name, m.art, moodColors[i % moodColors.size],
+                                onClick = { state.push(Route.VodCategory(m.category, false)) },
+                                modifier = Modifier.width(if (wide) 230.dp else 190.dp).height(if (wide) 86.dp else 76.dp))
                         }
                     }
                 }
             }
 
             if (cont.isNotEmpty()) {
-                item { RowTitle("Continue watching") }
+                item { SectionHeader("Continue watching", "Pick up where you left off", modifier = Modifier.padding(horizontal = pad)) }
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 28.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
                         items(cont, key = { it.key }) { p ->
                             WideCard(
                                 title = p.title, subtitle = p.subtitle, image = p.poster, progress = p.fraction, width = 260.dp,
                                 onClick = { state.play(resumeRequest(p)) }, onLongClick = { app.prefs.removeProgress(p.key) },
-                                onFocused = {
-                                    focus(Featured(HeroItem("c-" + p.key, p.title, p.poster, p.subtitle, null, "CONTINUE", true, p.fraction),
-                                        { state.play(resumeRequest(p)) }, null))
-                                },
+                                onFocused = {},
                             )
                         }
                     }
@@ -236,30 +282,18 @@ fun HomeScreen(state: AppState) {
             }
 
             if (liveNow.isNotEmpty()) {
-                item { RowTitle("Live now · your channels") }
+                item { SectionHeader("On now", "Your favorite and recent channels", onSeeAll = { state.tab = Tab.Live }, modifier = Modifier.padding(horizontal = pad)) }
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 28.dp)) {
-                        items(liveNow, key = { it.streamId }) { c ->
-                            LiveNowCard(c, onClick = {
-                                app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c), liveNow)
-                            }, onFocused = { prog ->
-                                focus(Featured(
-                                    HeroItem("l-${c.streamId}", prog?.title ?: c.name, c.icon,
-                                        meta = c.name + (prog?.let { "  ·  ${fmtTime(it.startMs)} – ${fmtTime(it.endMs)}  ·  ${minutesLeft(it)} left" } ?: ""),
-                                        description = prog?.description, badge = "LIVE", imageIsPoster = true),
-                                    { app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c), liveNow) }, null,
-                                ))
-                            })
-                        }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                        items(liveNow, key = { it.streamId }) { c -> LiveNowCard(c, onClick = { playLive(c) }, onFocused = {}) }
                     }
                 }
             }
 
-            val games = sports.valueOrNull().orEmpty()
             if (games.isNotEmpty()) {
-                item { RowTitle("My teams") }
+                item { SectionHeader("My teams", "Today's games", onSeeAll = { state.tab = Tab.Sports }, modifier = Modifier.padding(horizontal = pad)) }
                 item {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = 28.dp)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = pad)) {
                         items(games, key = { it.first.key + it.second.id }) { (_, g) ->
                             Box(Modifier.width(340.dp)) {
                                 GameRow(g, favorite = true, hideScores = hide, onClick = { state.push(Route.GameDetail(g)) }, onLongClick = {})
@@ -269,30 +303,26 @@ fun HomeScreen(state: AppState) {
                 }
             }
 
-            movieRows.valueOrNull().orEmpty().forEach { (name, list) ->
-                item(key = "m-$name") { RowTitle(name) }
-                item(key = "mr-$name") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 28.dp)) {
-                        items(list, key = { it.streamId }) { v -> MoviePoster(v, state, progress) { f -> focus(f) } }
+            movieRows.valueOrNull().orEmpty().forEach { (cat, list) ->
+                item(key = "m-${cat.id}") {
+                    SectionHeader(cleanCategoryName(cat.name), "Movies", onSeeAll = { state.push(Route.VodCategory(cat, false)) },
+                        modifier = Modifier.padding(horizontal = pad))
+                }
+                item(key = "mr-${cat.id}") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                        items(list, key = { it.streamId }) { v -> MoviePoster(v, state, progress) {} }
                     }
                 }
             }
-            seriesRows.valueOrNull().orEmpty().forEach { (name, list) ->
-                item(key = "s-$name") { RowTitle(name) }
-                item(key = "sr-$name") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = 28.dp)) {
+            seriesRows.valueOrNull().orEmpty().forEach { (cat, list) ->
+                item(key = "s-${cat.id}") {
+                    SectionHeader(cleanCategoryName(cat.name), "Series", onSeeAll = { state.push(Route.VodCategory(cat, true)) },
+                        modifier = Modifier.padding(horizontal = pad))
+                }
+                item(key = "sr-${cat.id}") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
                         items(list, key = { it.seriesId }) { s ->
-                            PosterCard(
-                                s.name, s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) },
-                                modifier = Modifier.onFocusChanged {
-                                    if (it.hasFocus) focus(Featured(
-                                        HeroItem("s-${s.seriesId}", s.name, s.backdrop ?: s.cover,
-                                            listOfNotNull(s.releaseDate?.take(4), s.genre, s.rating?.let { r -> "★ $r" }).joinToString("  ·  ").ifBlank { null },
-                                            s.plot, "SERIES", s.backdrop == null),
-                                        { state.push(Route.SeriesDetail(s)) }, { state.push(Route.SeriesDetail(s)) },
-                                    ))
-                                },
-                            )
+                            PosterCard(s.name, s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) })
                         }
                     }
                 }
@@ -302,21 +332,193 @@ fun HomeScreen(state: AppState) {
             if (cont.isEmpty() && liveNow.isEmpty() && all is Load.Ok && movieRows.valueOrNull().isNullOrEmpty()) {
                 item {
                     Text("Start watching from Live TV, Movies or Series and your favorites and progress show up here. " +
-                        "Long-press (hold OK) on a channel to favorite it.", color = DS.TextDim, modifier = Modifier.padding(28.dp))
+                        "Long-press (hold OK) on a channel to favorite it.", color = DS.TextDim, modifier = Modifier.padding(pad))
                 }
             }
         }
     }
 }
 
+private data class Mood(val category: com.dekstream.tv.data.Category, val name: String, val art: String?)
+
+private val moodColors = listOf(Color(0xFFFF453A), Color(0xFFFF9F0A), Color(0xFF64D2FF), Color(0xFF30D158), Color(0xFFBF5AF2), Color(0xFFFF375F))
+
+/** "EN | Action Movies" -> "Action Movies". */
+fun cleanCategoryName(raw: String): String =
+    raw.substringAfterLast('|').substringAfterLast(':').replace(Regex("^\\W+"), "").trim().ifBlank { raw.trim() }
+
+private fun greeting(name: String?): String {
+    val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+    val part = when (h) { in 5..11 -> "Good morning"; in 12..16 -> "Good afternoon"; else -> "Good evening" }
+    return if (name.isNullOrBlank()) part else "$part, $name"
+}
+
+private fun statusLine(onNow: Int, liveGames: Int, next: Game?): String {
+    val parts = ArrayList<String>()
+    if (liveGames > 0) parts += "$liveGames of your games ${if (liveGames == 1) "is" else "are"} live"
+    else if (next != null) parts += "Next up: ${next.away.abbr} @ ${next.home.abbr} at ${fmtTime(next.startMs)}"
+    if (onNow > 0) parts += "$onNow channels ready to watch"
+    return parts.joinToString(" · ").ifBlank { "Everything you watch, in one place." }
+}
+
+/** The big rotating card: wide art fills it, posters sit on the right over a tinted fade. */
+@Composable
+private fun FeatureCard(f: Featured?, count: Int, index: Int, modifier: Modifier, onInteract: () -> Unit) {
+    val hero = f?.hero
+    val poster = hero?.imageIsPoster == true
+    BentoCard(modifier, image = if (poster) null else hero?.image, onClick = f?.onPlay, onFocused = onInteract) {
+        if (poster) {
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF15151A), DS.Accent.copy(alpha = 0.55f)))))
+            hero?.image?.let {
+                AsyncImage(it, null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.align(Alignment.CenterEnd).fillMaxHeight().aspectRatio(2f / 3f).padding(14.dp).clip(RoundedCornerShape(12.dp)))
+            }
+        }
+        if (hero == null) {
+            Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF15151A), DS.Accent.copy(alpha = 0.45f)))))
+            Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
+                BrandMark(34.dp, nameSize = 26)
+                Text("Your channels, movies and shows.", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+            }
+            return@BentoCard
+        }
+        hero.badge?.let {
+            Box(Modifier.align(Alignment.TopStart).padding(14.dp)) { ArtChip(it, Icons.Default.AutoAwesome) }
+        }
+        Column(Modifier.align(Alignment.BottomStart).fillMaxWidth(if (poster) 0.62f else 0.85f).padding(start = 20.dp, bottom = 18.dp, end = 12.dp)) {
+            Text(hero.title, color = Color.White, fontSize = 30.sp, fontWeight = FontWeight.Black, lineHeight = 32.sp,
+                letterSpacing = (-0.5).sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            hero.meta?.let { Text(it, color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp)) }
+            hero.progress?.let { p ->
+                Box(Modifier.padding(top = 8.dp).width(160.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x55FFFFFF))) {
+                    Box(Modifier.fillMaxWidth(p).height(4.dp).background(DS.Accent))
+                }
+            }
+            Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                PillButton(when (hero.badge) { "Continue watching" -> "Resume"; "Series" -> "Episodes"; else -> "Play" },
+                    f!!.onPlay, Icons.Default.PlayArrow, primary = true, onImage = true)
+                f.onInfo?.let { CircleButton(Icons.Default.Info, it, contentDescription = "More info") }
+            }
+        }
+        if (count > 1) {
+            Row(Modifier.align(Alignment.BottomEnd).padding(16.dp), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                repeat(count) { i ->
+                    Box(Modifier.size(if (i == index) 16.dp else 6.dp, 6.dp).clip(RoundedCornerShape(3.dp))
+                        .background(if (i == index) Color.White else Color.White.copy(alpha = 0.35f)))
+                }
+            }
+        }
+    }
+}
+
+/** Short wide card under the feature: next game, else something to resume, else the guide. */
+@Composable
+private fun UpNextCard(
+    game: Game?, hide: Boolean, resume: ProgressEntry?, modifier: Modifier,
+    onGame: (Game) -> Unit, onResume: (ProgressEntry) -> Unit, onGuide: () -> Unit,
+) {
+    when {
+        game != null -> BentoCard(modifier, onClick = { onGame(game) }) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    if (game.isLive) ArtChip("LIVE", color = DS.Live) else ArtChip("Up next · ${dayLabel(game.startMs)} ${fmtTime(game.startMs)}",
+                        color = DS.AccentSoft, textColor = DS.Text)
+                    Text("${game.away.nickname} at ${game.home.nickname}", color = DS.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                    Text(listOfNotNull(game.league.short, if (game.isLive && !hide) game.detail else null, game.broadcasts.firstOrNull()).joinToString(" · "),
+                        color = DS.TextDim, fontSize = 12.sp, maxLines = 1)
+                }
+                listOf(game.away.logo, game.home.logo).forEach { l ->
+                    AsyncImage(l, null, contentScale = ContentScale.Fit, modifier = Modifier.padding(start = 8.dp).size(44.dp))
+                }
+            }
+        }
+        resume != null -> BentoCard(modifier, onClick = { onResume(resume) }) {
+            Row(Modifier.fillMaxSize().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.fillMaxHeight().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(DS.Surface2)) {
+                    resume.poster?.let { AsyncImage(it, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize()) }
+                }
+                Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                    ArtChip("Up next", Icons.Default.PlayArrow, color = DS.AccentSoft, textColor = DS.Text)
+                    Text(resume.title, color = DS.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 6.dp))
+                    resume.subtitle?.let { Text(it, color = DS.TextDim, fontSize = 12.sp, maxLines = 1) }
+                }
+            }
+        }
+        else -> BentoCard(modifier, onClick = onGuide) {
+            Row(Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.CalendarViewWeek, null, tint = DS.Accent, modifier = Modifier.size(28.dp))
+                Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                    Text("What's on tonight", color = DS.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text("Open the TV guide", color = DS.TextDim, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}
+
+/** Tall card: the first favorite channel and what's on, else a movie poster. */
+@Composable
+private fun OnNowCard(
+    c: Channel?, movie: Vod?, modifier: Modifier,
+    onPlay: (Channel) -> Unit, onMovie: (Vod) -> Unit, onLive: () -> Unit,
+) {
+    val repo = DekStreamApp.instance.repo
+    if (c != null && repo != null) {
+        val now by produceState<Program?>(null, c.streamId) { value = runCatching { repo.nowNext(c).firstOrNull { it.isLive() } }.getOrNull() }
+        BentoCard(modifier, onClick = { onPlay(c) }) {
+            Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(DS.Accent.copy(alpha = 0.55f), Color(0xFF0E0E12)))))
+            Box(Modifier.align(Alignment.TopStart).padding(14.dp)) { ArtChip("On now", Icons.Default.FiberManualRecord, color = DS.Live) }
+            Box(Modifier.align(Alignment.Center).padding(bottom = 40.dp).size(96.dp).clip(RoundedCornerShape(22.dp)).background(Color(0x26FFFFFF)),
+                contentAlignment = Alignment.Center) {
+                if (c.icon != null) AsyncImage(c.icon, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(14.dp))
+                else Icon(Icons.Default.LiveTv, null, tint = Color.White, modifier = Modifier.size(42.dp))
+            }
+            Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
+                Text(now?.title ?: c.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis, lineHeight = 22.sp)
+                Text(c.name + (now?.let { " · ${minutesLeft(it)} left" } ?: ""), color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp, maxLines = 1)
+                val p = now
+                if (p != null) {
+                    val f = ((System.currentTimeMillis() - p.startMs).toFloat() / (p.endMs - p.startMs)).coerceIn(0f, 1f)
+                    Box(Modifier.padding(top = 8.dp).fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF))) {
+                        Box(Modifier.fillMaxWidth(f).height(3.dp).background(Color.White))
+                    }
+                }
+            }
+        }
+    } else if (movie != null) {
+        BentoCard(modifier, image = movie.poster, onClick = { onMovie(movie) }) {
+            Box(Modifier.align(Alignment.TopStart).padding(14.dp)) { ArtChip("Recently added", Icons.Default.Check) }
+            Column(Modifier.align(Alignment.BottomStart).padding(16.dp)) {
+                Text(movie.name, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text("Movie", color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp)
+            }
+        }
+    } else {
+        BentoCard(modifier, onClick = onLive) {
+            Column(Modifier.align(Alignment.Center).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Default.LiveTv, null, tint = DS.Accent, modifier = Modifier.size(40.dp))
+                Text("Browse Live TV", color = DS.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
+                Text("Favorite a channel to pin it here", color = DS.TextDim, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+private fun dayLabel(ms: Long): String {
+    val c = java.util.Calendar.getInstance(); val today = c.get(java.util.Calendar.DAY_OF_YEAR)
+    c.timeInMillis = ms
+    return when (c.get(java.util.Calendar.DAY_OF_YEAR) - today) {
+        0 -> "Today"; 1 -> "Tomorrow"
+        else -> java.text.SimpleDateFormat("EEE", java.util.Locale.getDefault()).format(java.util.Date(ms))
+    }
+}
+
 private fun resumeRequest(p: ProgressEntry) =
     PlayRequest(p.url, p.title, p.subtitle, isLive = false, progressKey = p.key, poster = p.poster, startPositionMs = p.positionMs)
 
-@Composable
-private fun RowTitle(text: String) {
-    Text(text, color = DS.Text, fontSize = 18.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(start = 28.dp, top = 22.dp, bottom = 10.dp))
-}
 
 @Composable
 private fun MoviePoster(v: Vod, state: AppState, progress: Map<String, ProgressEntry>, onFocus: (Featured) -> Unit) {
@@ -349,7 +551,7 @@ private fun WideCard(
     title: String, subtitle: String?, image: String?, progress: Float, width: Dp,
     onClick: () -> Unit, onLongClick: () -> Unit, onFocused: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(Modifier.width(width).onFocusChanged { if (it.hasFocus) onFocused() }) {
         Box(
             Modifier.fillMaxWidth().aspectRatio(16f / 9f).focusRing(shape, 1.05f).clip(shape).background(DS.Surface2)

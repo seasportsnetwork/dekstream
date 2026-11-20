@@ -106,7 +106,7 @@ fun PosterCard(
     wide: Boolean = false,
     onLongClick: (() -> Unit)? = null,
 ) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(14.dp)
     Column(modifier.width(width)) {
         Box(
             Modifier
