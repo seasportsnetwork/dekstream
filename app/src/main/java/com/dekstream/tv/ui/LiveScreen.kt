@@ -1,5 +1,11 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.material.icons.filled.PlayArrow
+
+import androidx.compose.foundation.layout.Arrangement
+
+import androidx.compose.ui.graphics.Brush
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.height
@@ -105,6 +111,8 @@ fun LiveScreen(state: AppState) {
     val favs by app.prefs.favorites.collectAsState()
     var selected by rememberSaveable { mutableStateOf<String?>(null) }
     var previewing by remember { mutableStateOf<Channel?>(null) }
+    // Video only starts when you press OK / tap; moving through the list just shows the info.
+    var playing by remember { mutableStateOf<Channel?>(null) }
 
     catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }) }
     LoadView(cats) { catList ->
@@ -133,11 +141,13 @@ fun LiveScreen(state: AppState) {
                                 shown, state,
                                 selectedId = if (showPreview) previewing?.streamId else null,
                                 onSelect = if (showPreview) { c -> previewing = c } else null,
+                                playingId = playing?.streamId,
+                                onPreview = if (showPreview) { c -> previewing = c; playing = c } else null,
                             )
                         }
                     }
                     if (showPreview) {
-                        PreviewPane(previewing, all.valueOrNull().orEmpty().let { filterChannels(it, catId, favs) }, state,
+                        PreviewPane(previewing, playing?.takeIf { it.streamId == previewing?.streamId }, { playing = it }, all.valueOrNull().orEmpty().let { filterChannels(it, catId, favs) }, state,
                             Modifier.weight(1.1f).fillMaxHeight())
                     }
                 }
@@ -196,7 +206,10 @@ fun CategoryChip(name: String, selected: Boolean, onLongClick: (() -> Unit)? = n
 }
 
 @Composable
-fun ChannelList(channels: List<Channel>, state: AppState, selectedId: Int? = null, onSelect: ((Channel) -> Unit)? = null) {
+fun ChannelList(
+    channels: List<Channel>, state: AppState, selectedId: Int? = null, onSelect: ((Channel) -> Unit)? = null,
+    playingId: Int? = null, onPreview: ((Channel) -> Unit)? = null,
+) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val favs by app.prefs.favorites.collectAsState()
@@ -221,8 +234,8 @@ fun ChannelList(channels: List<Channel>, state: AppState, selectedId: Int? = nul
                 favorite = c.streamId in favs,
                 selected = isSel,
                 onClick = {
-                    // With a preview pane: first tap previews, second tap (or OK) goes full screen.
-                    if (onSelect != null && !isSel && !DekStreamApp.instance.isTv) onSelect(c)
+                    // With a preview pane: first OK / tap plays it in the preview, the second goes full screen.
+                    if (onPreview != null && playingId != c.streamId) onPreview(c)
                     else {
                         app.prefs.markChannelWatched(c.streamId)
                         state.play(repo.liveRequest(c), channels)
@@ -237,15 +250,29 @@ fun ChannelList(channels: List<Channel>, state: AppState, selectedId: Int? = nul
 
 /** Right-hand pane: small live picture of the highlighted channel plus now/next. */
 @Composable
-private fun PreviewPane(c: Channel?, list: List<Channel>, state: AppState, modifier: Modifier) {
+private fun PreviewPane(c: Channel?, playing: Channel?, onPlay: (Channel) -> Unit, list: List<Channel>, state: AppState, modifier: Modifier) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val epg by produceState<List<Program>>(emptyList(), c?.streamId) { value = c?.let { repo.nowNext(it) }.orEmpty() }
     val now = epg.firstOrNull { it.isLive() }
     val next = epg.firstOrNull { it.startMs > System.currentTimeMillis() }
     Column(modifier.padding(start = 6.dp, end = 20.dp, top = 16.dp)) {
-        LivePreview(c, Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
-            if (c != null) {
+        LivePreview(playing, Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+            if (c != null && playing == null) {
+                Column(
+                    Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(DS.Accent.copy(alpha = 0.35f), Color(0xFF0B0B0F))))
+                        .clickable { onPlay(c) },
+                    horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center,
+                ) {
+                    ChannelLogo(c.icon, 72.dp)
+                    Row(Modifier.padding(top = 12.dp).clip(RoundedCornerShape(50)).background(Color(0x99000000)).padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Text(" Press OK to preview", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+            if (c != null && playing != null) {
                 Row(
                     Modifier.align(Alignment.TopStart).padding(10.dp).clip(RoundedCornerShape(6.dp)).background(Color(0x99000000))
                         .padding(horizontal = 8.dp, vertical = 3.dp),
