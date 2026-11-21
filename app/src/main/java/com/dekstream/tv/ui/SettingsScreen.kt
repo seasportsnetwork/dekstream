@@ -60,9 +60,10 @@ fun SettingsScreen(state: AppState) {
         if (session.source.type == SourceType.XTREAM) {
             SectionTitle("Live TV stream format")
             Card {
-                Text("Try HLS if channels stutter or won't start with MPEG-TS.", color = DS.TextDim, fontSize = 13.sp)
+                Text("HLS lets you pause and rewind live TV (up to 5 minutes) and often starts more reliably. " +
+                    "MPEG-TS can't be rewound but can be a little closer to live.", color = DS.TextDim, fontSize = 13.sp)
                 Row(Modifier.padding(top = 10.dp)) {
-                    listOf("ts" to "MPEG-TS (.ts)", "m3u8" to "HLS (.m3u8)").forEach { (v, label) ->
+                    listOf("m3u8" to "HLS (.m3u8) · pause & rewind", "ts" to "MPEG-TS (.ts)").forEach { (v, label) ->
                         CategoryChip(label, format == v) { format = v; app.prefs.liveFormat = v }
                         HSpacer(10.dp)
                     }

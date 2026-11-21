@@ -3,6 +3,7 @@ package com.dekstream.tv.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.ConcurrentHashMap
 
@@ -27,14 +28,48 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
     private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) { block() }
 
     // ---- Raw provider data (cached) ----
+    // Saved copy of the playlist: used straight away on launch, refreshed from the provider in the background.
+    private val disk by lazy { PlaylistCache(com.dekstream.tv.DekStreamApp.instance.filesDir, source.id) }
+    private val bg = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO)
+    private val refreshing = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    /** Memory, else the saved copy (then refresh in the background), else the provider. */
+    private suspend fun <T> cached(
+        name: String, mem: () -> T?, setMem: (T) -> Unit, load: () -> T?, save: (T) -> Unit, fetch: suspend () -> T,
+    ): T {
+        mem()?.let { return it }
+        io { load() }?.let { saved ->
+            setMem(saved)
+            if (refreshing.add(name)) bg.launch {
+                runCatching { fetch() }.getOrNull()?.let { fresh -> setMem(fresh); save(fresh) }
+            }
+            return saved
+        }
+        val fresh = io { fetch() }
+        setMem(fresh)
+        bg.launch { save(fresh) }
+        return fresh
+    }
+
     suspend fun rawLiveCategories(): List<Category> =
-        if (!source.loadLive) emptyList() else lock.withLock { liveCats ?: io { provider.liveCategories() }.also { liveCats = it } }
+        if (!source.loadLive) emptyList() else lock.withLock {
+            cached("live_cats", { liveCats }, { liveCats = it }, { disk.loadCategories("live_cats") }, { disk.saveCategories("live_cats", it) }) { provider.liveCategories() }
+        }
     suspend fun rawVodCategories(): List<Category> =
-        if (!source.loadMovies) emptyList() else lock.withLock { vodCats ?: io { provider.vodCategories() }.also { vodCats = it } }
+        if (!source.loadMovies) emptyList() else lock.withLock {
+            cached("vod_cats", { vodCats }, { vodCats = it }, { disk.loadCategories("vod_cats") }, { disk.saveCategories("vod_cats", it) }) { provider.vodCategories() }
+        }
     suspend fun rawSeriesCategories(): List<Category> =
-        if (!source.loadShows) emptyList() else lock.withLock { seriesCats ?: io { provider.seriesCategories() }.also { seriesCats = it } }
+        if (!source.loadShows) emptyList() else lock.withLock {
+            cached("series_cats", { seriesCats }, { seriesCats = it }, { disk.loadCategories("series_cats") }, { disk.saveCategories("series_cats", it) }) { provider.seriesCategories() }
+        }
     suspend fun rawChannels(): List<Channel> =
-        if (!source.loadLive) emptyList() else allLock.withLock { allLive ?: io { provider.allChannels() }.also { allLive = it } }
+        if (!source.loadLive) emptyList() else allLock.withLock {
+            cached("channels", { allLive }, { allLive = it }, { disk.loadChannels() }, { disk.saveChannels(it) }) { provider.allChannels() }
+        }
+
+    /** Forget the saved playlist (e.g. after editing the source). */
+    fun clearSavedPlaylist() = disk.clear()
 
     // ---- What this profile sees: hidden items removed, renames/numbers/guide matches applied ----
     private fun viewCats(list: List<Category>, prefix: String) = list
