@@ -65,7 +65,9 @@ class EpgIndex(private val http: OkHttpClient, private val cacheDir: java.io.Fil
      * Loads (or reuses, if younger than 30 min) one or more XMLTV guides, highest priority first.
      * Lower-priority guides add channels the others lack and fill time gaps in channels they share.
      */
-    suspend fun ensure(key: String, urls: List<String>): Map<String, List<Entry>> {
+    suspend fun ensure(key: String, urls: List<String>): Map<String, List<Entry>> = withContext(Dispatchers.IO) { ensureIo(key, urls) }
+
+    private suspend fun ensureIo(key: String, urls: List<String>): Map<String, List<Entry>> {
         lock.withLock {
             if (loadedFor == key && byChannel.isNotEmpty()) {
                 // Stale but usable: answer now, refresh quietly in the background.
@@ -197,9 +199,9 @@ class EpgIndex(private val http: OkHttpClient, private val cacheDir: java.io.Fil
         programmesFor(c).firstOrNull { at >= it.startMs && at < it.endMs }
 
     private fun normName(s: String) = s.lowercase()
-        .replace(Regex("\\b(hd|fhd|uhd|4k|sd|hevc|h265|backup|raw)\\b"), " ")
-        .replace(Regex("^[a-z]{2,3}\\s*[:|\\-]\\s*"), "")
-        .replace(Regex("[^a-z0-9]"), "")
+        .replace(RX_QUALITY, " ")
+        .replace(RX_PREFIX, "")
+        .replace(RX_NON_ALNUM, "")
 
     private suspend fun download(url: String): Map<String, List<Entry>> = withContext(Dispatchers.IO) {
         val names = HashMap<String, String>(8192)
@@ -277,5 +279,11 @@ class EpgIndex(private val http: OkHttpClient, private val cacheDir: java.io.Fil
         byName = names
         idNames = displayNames
         out.mapValues { (_, l) -> l.sortedBy { it.startMs } }
+    }
+
+    private companion object {
+        val RX_QUALITY = Regex("\\b(hd|fhd|uhd|4k|sd|hevc|h265|backup|raw)\\b")
+        val RX_PREFIX = Regex("^[a-z]{2,3}\\s*[:|\\-]\\s*")
+        val RX_NON_ALNUM = Regex("[^a-z0-9]")
     }
 }

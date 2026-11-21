@@ -48,6 +48,7 @@ class DekStreamApp : Application() {
     var pendingPlayStream by mutableStateOf<Int?>(null)
     /** Debug test hook: tab to open (see MainActivity.handleTestIntent). */
     var pendingTab by mutableStateOf<com.dekstream.tv.ui.Tab?>(null)
+    var pendingTestGame by mutableStateOf<String?>(null)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -107,6 +108,8 @@ class DekStreamApp : Application() {
         applyAppearance(ProfileSettings(this, p.id))
         ProfileSettings(this, p.id).let { ps ->
             com.dekstream.tv.data.ContentFilter.showAdult = ps.showAdult && !p.kids
+            // Home is Live TV first: movies and series are opt-in (Settings > Home screen).
+            if (!ps.homeLiveFirst) { ps.homeHidden = ps.homeHidden + com.dekstream.tv.data.HomeLayout.liveOnlyHidden; ps.homeLiveFirst = true }
             com.dekstream.tv.data.HomeLayout.hidden = ps.homeHidden
         }
         val visible = store.sources.value.filter { p.canSee(it.id) }

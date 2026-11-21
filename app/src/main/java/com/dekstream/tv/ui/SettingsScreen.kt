@@ -75,7 +75,7 @@ fun SettingsScreen(state: AppState) {
             NavRow(Icons.Default.Palette, "Appearance", "Accent, background, selection style, transparency, guide background") {
                 state.push(Route.AppearanceSettings)
             }
-            NavRow(Icons.Default.Dashboard, "Home screen", "Choose what Home shows: everything, Live TV only, or your own mix") {
+            NavRow(Icons.Default.Dashboard, "Home screen", "Live TV first. Add Movies and Series to Home, or pick your own mix") {
                 state.push(Route.HomeSettings)
             }
             if (!session.profile.kids) {

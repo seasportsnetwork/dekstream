@@ -36,6 +36,10 @@ class ProfileSettings(context: Context, val profileId: String) {
     var showAdult: Boolean
         get() = pp.getBoolean("showAdult", false)
         set(v) = pp.edit().putBoolean("showAdult", v).apply()
+    /** Set once Home has been switched to the Live-TV-first default. */
+    var homeLiveFirst: Boolean
+        get() = pp.getBoolean("homeLiveFirst", false)
+        set(v) = pp.edit().putBoolean("homeLiveFirst", v).apply()
     /** Home sections turned off (see HomeLayout). */
     var homeHidden: Set<String>
         get() = pp.getString("homeHidden", "")!!.split('|').filter { it.isNotBlank() }.toSet()

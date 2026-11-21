@@ -152,6 +152,8 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     var current by remember { mutableStateOf(request) }
     var error by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(true) }
+    /** What the stream actually is: "1080p", "4K", plus extras like "60fps", "HDR", "HEVC". */
+    var quality by remember { mutableStateOf<List<String>>(emptyList()) }
     // Self-healing: errors on this feed, whether it has started, feeds already tried, on-screen notice.
     var errorsHere by remember { mutableIntStateOf(0) }
     var started by remember { mutableStateOf(false) }
@@ -216,6 +218,8 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                 }
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying || player.playWhenReady }
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) { quality = qualityOf(player) }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { quality = qualityOf(player) }
             override fun onPlayerError(e: PlaybackException) {
                 error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
                 if (current.isLive) {
@@ -235,6 +239,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     // Load whenever the item changes (zapping, start over, back to live).
     LaunchedEffect(current.url) {
         error = null
+        quality = emptyList()
         errorsHere = 0; started = false; loadStartedAt = System.currentTimeMillis()
         val url = runCatching { repo?.provider?.resolve(current.url) ?: current.url }.getOrDefault(current.url)
         player.setMediaItem(MediaItem.fromUri(url), current.startPositionMs)
@@ -482,6 +487,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                             Text(current.title, color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.SemiBold,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, false))
                             if (current.isLive) { HSpacer(10.dp); LiveBadge() }
+                            quality.forEachIndexed { i, q -> HSpacer(if (i == 0) 10.dp else 6.dp); QualityBadge(q, primary = i == 0) }
                         }
                         val sub = if (current.isLive) nowProg?.let { "${it.title} · ${minutesLeft(it)} left" } else current.subtitle
                         sub?.let { Text(it, color = DS.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -698,3 +704,41 @@ private fun ChannelPanel(channels: List<Channel>, currentId: Int?, onPick: (Chan
 
 @Suppress("unused") private val noRipple = MutableInteractionSource()
 @Suppress("unused") private val h = Modifier.heightIn(0.dp)
+
+
+/** Resolution + extras from the playing video track. */
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
+private fun qualityOf(p: androidx.media3.exoplayer.ExoPlayer): List<String> {
+    val f = p.videoFormat ?: return emptyList()
+    val w = maxOf(f.width, f.height); val h = minOf(f.width, f.height)
+    if (h <= 0) return emptyList()
+    val res = when {
+        h >= 2000 || w >= 3800 -> "4K"
+        h >= 1400 -> "1440p"
+        h >= 1000 || w >= 1900 -> "1080p"
+        h >= 700 || w >= 1260 -> "720p"
+        h >= 540 -> "576p"
+        else -> "SD"
+    }
+    val out = arrayListOf(res)
+    val fps = f.frameRate
+    if (fps >= 47f) out += "${kotlin.math.round(fps).toInt()}fps"
+    val tr = f.colorInfo?.colorTransfer
+    if (tr == androidx.media3.common.C.COLOR_TRANSFER_ST2084 || tr == androidx.media3.common.C.COLOR_TRANSFER_HLG) out += "HDR"
+    val mime = f.sampleMimeType ?: ""
+    if (mime.contains("hevc") || mime.contains("dolby")) out += if (mime.contains("dolby")) "DV" else "HEVC"
+    return out
+}
+
+@Composable
+private fun QualityBadge(text: String, primary: Boolean) {
+    val bg = when {
+        !primary -> Color(0x33FFFFFF)
+        text == "4K" -> Color(0xFFFFB300)
+        text == "1080p" || text == "1440p" -> Color(0xFF2D7FF9)
+        text == "720p" -> Color(0xFF34C759)
+        else -> Color(0xFF8E8E93)
+    }
+    Text(text, color = if (primary && text == "4K") Color.Black else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+        modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(bg).padding(horizontal = 7.dp, vertical = 2.dp))
+}

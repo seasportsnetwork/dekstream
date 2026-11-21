@@ -68,6 +68,7 @@ class MainActivity : ComponentActivity() {
                 app.start(p)
             } else if (app.session == null) app.store.profiles.value.firstOrNull()?.let { app.start(it) }
         }
+        i?.getStringExtra("test_game")?.let { app.pendingTestGame = it }
         i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
         if (i?.getBooleanExtra("test_update", false) == true) {
             com.dekstream.tv.data.Updater.available = com.dekstream.tv.data.UpdateInfo("v9.9.9", "9.9.9",
@@ -134,6 +135,25 @@ private fun SignedIn() {
         val t = pendingTab ?: return@LaunchedEffect
         app.pendingTab = null
         state.stack.clear(); state.tab = t
+    }
+
+    // Debug test hook: open the first game of a league (test_game=nba).
+    val testGame = app.pendingTestGame
+    LaunchedEffect(testGame) {
+        val key = testGame ?: return@LaunchedEffect
+        app.pendingTestGame = null
+        val l = app.sports.league(key) ?: return@LaunchedEffect
+        val game = run {
+            var found: com.dekstream.tv.data.Game? = null
+            for (d in 0..6) {
+                val c = java.util.Calendar.getInstance(); c.add(java.util.Calendar.DAY_OF_YEAR, d)
+                found = app.sports.scoreboard(l, java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(c.time)).firstOrNull()
+                if (found != null) break
+            }
+            found
+        } ?: return@LaunchedEffect
+        state.stack.clear(); state.tab = Tab.Sports
+        state.push(Route.GameDetail(game))
     }
 
     // Open a channel from a reminder notification.
