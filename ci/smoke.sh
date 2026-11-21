@@ -23,7 +23,9 @@ adb shell cmd alarm set-timezone America/New_York >/dev/null 2>&1 || adb shell s
 
 step "launch + test playlist"
 start --es test_m3u "$M3U" --es test_tab Home
-sleep 30; shot 01-home
+sleep 25
+start --ei test_fav 5 --es test_tab Home
+sleep 15; shot 01-home
 
 n=2
 for t in Live Favorites Guide Sports Movies Series Search Settings Home; do
@@ -56,6 +58,18 @@ step "light theme"
 start --es test_tab Home --ei test_palette 4; sleep 8
 shot "$(printf %02d $n)-home-light"; n=$((n+1))
 start --ei test_palette 0
+
+step "favorites reorder"
+start --es test_tab Favorites; sleep 6
+key 20; sleep 1; key 22; sleep 1; key 23; sleep 3
+shot "$(printf %02d $n)-favorites-reorder"; n=$((n+1))
+key 4; sleep 1
+
+step "shield home screen row"
+key 3; sleep 10
+shot "$(printf %02d $n)-launcher"; n=$((n+1))
+key 20; sleep 2; key 20; sleep 3
+shot "$(printf %02d $n)-launcher-rows"; n=$((n+1))
 
 step "update prompt"
 start --es test_tab Settings --ez test_update true; sleep 6
