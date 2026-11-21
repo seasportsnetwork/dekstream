@@ -110,13 +110,18 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
-fun buildPlayer(context: android.content.Context, live: Boolean, keepBehindMs: Int = 0): ExoPlayer {
+/**
+ * Memory matters: every buffered second of video lives in the app's memory. Live TV keeps at most
+ * 30 s ahead (15 s in multiview) and, only for HLS (which can actually rewind), 60 s behind.
+ * The old 5-minute back buffer filled memory at HD bitrates and crashed after a few minutes.
+ */
+fun buildPlayer(context: android.content.Context, live: Boolean, keepBehindMs: Int = 0, small: Boolean = false): ExoPlayer {
     val app = DekStreamApp.instance
     val dataSource = OkHttpDataSource.Factory(app.http).setUserAgent(XtreamApi.USER_AGENT)
     val loadControl = DefaultLoadControl.Builder()
         .setBufferDurationsMs(
-            if (live) 8_000 else 15_000,
-            if (live) 30_000 else 60_000,
+            if (small) 5_000 else if (live) 8_000 else 15_000,
+            if (small) 15_000 else if (live) 30_000 else 60_000,
             1_500,
             3_000,
         )
@@ -184,8 +189,11 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     val pip = app.inPip
 
-    // Keep up to 5 minutes behind live so live TV can be paused and rewound (HLS).
-    val player = remember { buildPlayer(context, request.isLive, keepBehindMs = if (request.isLive) 300_000 else 0) }
+    // Keep 60 s behind live so HLS live TV can be paused and rewound (TS can't seek, so nothing is kept).
+    val player = remember {
+        val hls = request.url.contains(".m3u8", ignoreCase = true)
+        buildPlayer(context, request.isLive, keepBehindMs = if (request.isLive && hls) 60_000 else 0)
+    }
 
     DisposableEffect(Unit) {
         app.playerActive = true
