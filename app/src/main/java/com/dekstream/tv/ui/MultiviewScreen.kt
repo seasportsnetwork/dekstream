@@ -261,7 +261,7 @@ private fun MultiTile(
 private fun TilePlayer(channel: Channel, hasAudio: Boolean) {
     val context = LocalContext.current
     val repo = DekStreamApp.instance.repo ?: return
-    val player = remember(channel.streamId) { buildPlayer(context, live = true) }
+    val player = remember(channel.streamId) { buildPlayer(context, live = true, small = true) }
     LaunchedEffect(channel.streamId) {
         val url = runCatching { repo.provider.resolve(repo.liveRequest(channel).url) }.getOrDefault(repo.liveRequest(channel).url)
         player.setMediaItem(MediaItem.fromUri(url))

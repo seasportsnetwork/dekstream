@@ -125,7 +125,7 @@ fun LivePreview(channel: Channel?, modifier: Modifier = Modifier, muted: Boolean
     val repo = DekStreamApp.instance.repo
     var active by remember { mutableStateOf<Channel?>(null) }
     var buffering by remember { mutableStateOf(false) }
-    val player = remember { buildPlayer(context, live = true) }
+    val player = remember { buildPlayer(context, live = true, small = true) }
     DisposableEffect(player) {
         val l = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) { buffering = state == Player.STATE_BUFFERING }
