@@ -51,6 +51,7 @@ class DekStreamApp : Application() {
     var pendingTestGame by mutableStateOf<String?>(null)
     var pendingTestFav by mutableStateOf<Int?>(null)
     var pendingTestRoute by mutableStateOf<String?>(null)
+    var pendingTestPlay by mutableStateOf<String?>(null)
     /** The search/mic key was pressed: Search opens listening. */
     var voiceSearchRequested by mutableStateOf(false)
     /** Game to watch from a notification: league key, game id, start time. */
