@@ -13,11 +13,16 @@ mkdir -p $OUT
 adb install -r $APK || exit 1
 adb logcat -c
 adb shell setprop persist.sys.timezone America/New_York >/dev/null 2>&1
-adb shell am start -n $ACT --es test_m3u "$M3U" --es test_tab Home >/dev/null
+EPG=${TEST_EPG:-https://epg.pw/xmltv/epg_US.xml}
+adb shell am start -n $ACT --es test_m3u "$M3U" --es test_epg "$EPG" --es test_tab Home >/dev/null
 sleep 30
+# Load the full guide the way Home and Sports do (big guide = big memory), then start playing.
+adb shell am start -n $ACT --es test_tab Sports >/dev/null; sleep 45
+m=$(adb shell dumpsys meminfo $PKG 2>/dev/null); echo "after guide load: java $(echo "$m" | grep -E "^ +Java Heap:" | awk '{print int($3/1024)}') MB" | tee $OUT/soak-guide.txt
+adb logcat -d | grep -iE "epg|guide" | grep -i dektv | tail -3 >> $OUT/soak-guide.txt
 adb shell am start -n $ACT --es test_play "$PLAY" >/dev/null
 sleep 10
-adb logcat -d | grep "SOAK playing" | tail -1 | tee $OUT/soak.txt
+{ cat $OUT/soak-guide.txt; adb logcat -d | grep "SOAK playing" | tail -1; } | tee $OUT/soak.txt
 echo "min  javaMB  nativeMB  totalMB  alive" | tee -a $OUT/soak.txt
 for i in $(seq 1 $((MIN * 2))); do
   m=$(adb shell dumpsys meminfo $PKG 2>/dev/null)
