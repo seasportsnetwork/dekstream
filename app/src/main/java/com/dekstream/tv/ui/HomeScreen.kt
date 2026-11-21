@@ -170,7 +170,8 @@ fun HomeScreen(state: AppState) {
     val spotGame = gameList.firstOrNull { it.isLive && it.hasFavorite(favTeams) }
         ?: gameList.firstOrNull { it.state == "pre" && it.hasFavorite(favTeams) }
         ?: gameList.firstOrNull { it.isLive }
-    val scores = gameList.filter { it.id != spotGame?.id }.take(4)
+    val otherGames = gameList.filter { it.id != spotGame?.id }
+    val scores = otherGames.take(3)
 
     // Coming up on your channels (favorites, then recent), next few hours.
     val upNext = remember(idx, favIds, recentIds, tick / 300_000, channels.size) {
@@ -229,7 +230,7 @@ fun HomeScreen(state: AppState) {
                     }
                 }
                 val side: @Composable (Modifier) -> Unit = { m ->
-                    ScoresPanel(scores, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
+                    ScoresPanel(scores, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m, more = otherGames.size - scores.size,
                         onGame = { g -> state.push(Route.GameDetail(g)) }, onAll = { state.tab = Tab.Sports })
                 }
                 if (wide) {
@@ -395,7 +396,7 @@ private fun GameSpotlight(g: Game, hide: Boolean, favs: List<com.dekstream.tv.da
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (g.state != "pre" && !hide) {
                     Text("${g.away.score ?: "-"}  –  ${g.home.score ?: "-"}", color = Color.White, fontSize = 44.sp, fontWeight = FontWeight.Black)
-                    Text(g.detail ?: "", color = if (g.isLive) Color(0xFFFF6B60) else Color.White.copy(alpha = 0.7f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(g.detail, color = Color.White.copy(alpha = 0.85f), fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                 } else {
                     Text(if (g.state == "pre") fmtTime(g.startMs) else "Live", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
                     Text(if (g.state == "pre") countdown(g.startMs) else "Scores hidden", color = Color.White.copy(alpha = 0.7f), fontSize = 14.sp)
@@ -478,7 +479,7 @@ private fun WelcomeSpotlight(modifier: Modifier, onLive: () -> Unit, onSports: (
 @Composable
 private fun ScoresPanel(
     games: List<Game>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
-    modifier: Modifier, onGame: (Game) -> Unit, onAll: () -> Unit,
+    modifier: Modifier, more: Int = 0, onGame: (Game) -> Unit, onAll: () -> Unit,
 ) {
     BentoCard(modifier) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
@@ -486,7 +487,7 @@ private fun ScoresPanel(
                 Text("Scores", color = DS.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 val shape = RoundedCornerShape(50)
                 Row(Modifier.focusRing(shape).clip(shape).tvClickable(onAll).padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("All sports", color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(if (more > 0) "+$more more" else "All sports", color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = DS.Accent, modifier = Modifier.size(16.dp))
                 }
             }
