@@ -49,6 +49,7 @@ class DekStreamApp : Application() {
     /** Debug test hook: tab to open (see MainActivity.handleTestIntent). */
     var pendingTab by mutableStateOf<com.dekstream.tv.ui.Tab?>(null)
     var pendingTestGame by mutableStateOf<String?>(null)
+    var pendingTestFav by mutableStateOf<Int?>(null)
     /** The search/mic key was pressed: Search opens listening. */
     var voiceSearchRequested by mutableStateOf(false)
     /** Game to watch from a notification: league key, game id, start time. */

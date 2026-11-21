@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
             } else if (app.session == null) app.store.profiles.value.firstOrNull()?.let { app.start(it) }
         }
         i?.getStringExtra("test_game")?.let { app.pendingTestGame = it }
+        i?.getIntExtra("test_fav", 0)?.takeIf { it > 0 }?.let { app.pendingTestFav = it }
         i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
         if (i?.getBooleanExtra("test_update", false) == true) {
             com.dekstream.tv.data.Updater.available = com.dekstream.tv.data.UpdateInfo("v9.9.9", "9.9.9",
@@ -156,6 +157,16 @@ private fun SignedIn() {
         val t = pendingTab ?: return@LaunchedEffect
         app.pendingTab = null
         state.stack.clear(); state.tab = t
+    }
+
+    // Debug test hook: favorite the first N channels.
+    val testFav = app.pendingTestFav
+    LaunchedEffect(testFav) {
+        val n = testFav ?: return@LaunchedEffect
+        val chans = runCatching { app.repo?.allChannels() }.getOrNull().orEmpty().take(n)
+        chans.forEach { c -> if (c.streamId !in app.prefs.favorites.value) app.prefs.toggleFavorite(c.streamId) }
+        chans.firstOrNull()?.let { app.prefs.markChannelWatched(it.streamId) }
+        app.pendingTestFav = null
     }
 
     // Debug test hook: open the first game of a league (test_game=nba).
