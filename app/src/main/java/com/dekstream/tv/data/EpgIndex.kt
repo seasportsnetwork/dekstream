@@ -208,8 +208,11 @@ class EpgIndex(private val http: OkHttpClient, private val cacheDir: java.io.Fil
         val displayNames = HashMap<String, String>(8192)
         val req = Request.Builder().url(url).header("User-Agent", XtreamApi.USER_AGENT).build()
         val now = System.currentTimeMillis()
-        val from = now - 4 * 3600_000L
-        val to = now + 12 * 3600_000L
+        // Memory: a big provider guide is thousands of channels; keep only what Home, Search and Sports use.
+        val from = now - 2 * 3600_000L
+        val to = now + 10 * 3600_000L
+        val pool = HashMap<String, String>(16_384) // share repeated titles/descriptions ("Paid Programming"…)
+        fun share(x: String): String = if (x.length > 120) x else pool.getOrPut(x) { x }
         val out = HashMap<String, MutableList<Entry>>(8192)
         val fmt = SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US)
         val fmtNoTz = SimpleDateFormat("yyyyMMddHHmmss", Locale.US)
@@ -259,7 +262,7 @@ class EpgIndex(private val http: OkHttpClient, private val cacheDir: java.io.Fil
                         if (n.isNotEmpty()) names.putIfAbsent(n, chanId!!)
                     } else if (inProg && keep) when (field) {
                         "title" -> title += p.text
-                        "desc" -> if (desc.length < 300) desc += p.text
+                        "desc" -> if (desc.length < 160) desc += p.text
                     }
                     XmlPullParser.END_TAG -> when (p.name) {
                         "display-name" -> inName = false
@@ -267,7 +270,7 @@ class EpgIndex(private val http: OkHttpClient, private val cacheDir: java.io.Fil
                         "title", "desc" -> field = null
                         "programme" -> {
                             if (keep && title.isNotBlank()) {
-                                out.getOrPut(ch) { ArrayList(8) } += Entry(title.trim(), desc.trim().take(300), start, end)
+                                out.getOrPut(ch) { ArrayList(6) } += Entry(share(title.trim()), share(desc.trim().take(160)), start, end)
                             }
                             inProg = false; keep = false
                         }
