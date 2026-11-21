@@ -1,5 +1,17 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.runtime.mutableStateOf
+
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+
+import androidx.compose.material.icons.filled.Close
+
+import androidx.compose.material.icons.filled.SwapHoriz
+
+import androidx.compose.material.icons.filled.Check
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +73,7 @@ fun FavoritesScreen(state: AppState) {
     val favTeams by app.prefs.favTeams.collectAsState()
     val all by rememberLoad(Unit) { repo.allChannels() }
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var editing by rememberSaveable { mutableStateOf(false) }
     val byId = all.valueOrNull().orEmpty().associateBy { it.streamId }
     val favs = favIds.mapNotNull { byId[it] }
 
@@ -75,12 +88,17 @@ fun FavoritesScreen(state: AppState) {
             Column(Modifier.padding(top = 22.dp)) {
                 Text("Favorites", color = DS.Text, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
                 Text(
-                    if (tab == 0) "${favs.size} channel${if (favs.size == 1) "" else "s"} · hold OK on one to remove it"
+                    if (tab == 0) "${favs.size} channel${if (favs.size == 1) "" else "s"} · " +
+                        (if (editing) "move channels with the arrows" else "hold OK on one to remove it")
                     else "${favTeams.size} team${if (favTeams.size == 1) "" else "s"}",
                     color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 2.dp),
                 )
                 Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Segmented(listOf("Channels" to Icons.Default.LiveTv, "Teams" to Icons.Default.SportsFootball), tab) { tab = it }
+                    if (tab == 0 && favs.size > 1) {
+                        Spacer(Modifier.width(12.dp))
+                        PillButton(if (editing) "Done" else "Reorder", { editing = !editing }, if (editing) Icons.Default.Check else Icons.Default.SwapHoriz, primary = editing)
+                    }
                 }
             }
         }
@@ -91,7 +109,24 @@ fun FavoritesScreen(state: AppState) {
                     "Browse Live TV") { state.tab = Tab.Live }
             }
             else items(favs, key = { it.streamId }) { c ->
-                FavChannelTile(c,
+                if (editing) {
+                    val i = favs.indexOf(c)
+                    BentoCard(Modifier.fillMaxWidth().height(132.dp)) {
+                        Column(Modifier.fillMaxSize().padding(14.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${i + 1}", color = DS.Accent, fontSize = 20.sp, fontWeight = FontWeight.Black, modifier = Modifier.width(34.dp))
+                                ChannelLogo(c.icon, 36.dp)
+                                Text("  " + c.name, color = DS.Text, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Spacer(Modifier.weight(1f))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                CircleButton(Icons.AutoMirrored.Filled.ArrowBack, { app.prefs.moveFavorite(c.streamId, -1) }, onImage = false, contentDescription = "Move earlier")
+                                CircleButton(Icons.AutoMirrored.Filled.ArrowForward, { app.prefs.moveFavorite(c.streamId, 1) }, onImage = false, contentDescription = "Move later")
+                                CircleButton(Icons.Default.Close, { app.prefs.toggleFavorite(c.streamId) }, onImage = false, contentDescription = "Remove")
+                            }
+                        }
+                    }
+                } else FavChannelTile(c,
                     onClick = { app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c), favs) },
                     onLongClick = { app.prefs.toggleFavorite(c.streamId) })
             }

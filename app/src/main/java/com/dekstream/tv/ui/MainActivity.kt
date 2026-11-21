@@ -87,6 +87,19 @@ class MainActivity : ComponentActivity() {
         ) ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7)
     }
 
+    /** Search / mic key on the remote: open Search and start listening. */
+    override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent?): Boolean {
+        if (keyCode == android.view.KeyEvent.KEYCODE_SEARCH || keyCode == android.view.KeyEvent.KEYCODE_VOICE_ASSIST) {
+            val app = DekStreamApp.instance
+            if (app.session != null && !app.playerActive) {
+                app.voiceSearchRequested = true
+                app.pendingTab = Tab.Search
+                return true
+            }
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
     companion object {
         const val EXTRA_PLAY_STREAM = "play_stream"
         const val EXTRA_GAME_LEAGUE = "game_league"
