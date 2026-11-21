@@ -1,0 +1,3 @@
+DekTV smoke test
+Worst UI stall: 62 skipped frames (~992 ms)
+RESULT: PASS

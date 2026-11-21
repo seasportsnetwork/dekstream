@@ -1,0 +1,16 @@
+launch + test playlist
+tab Live
+tab Favorites
+tab Guide
+tab Sports
+tab Movies
+tab Series
+tab Search
+tab Settings
+tab Home
+live tv: move focus (no autoplay), then OK = preview
+player: full screen with quality badge
+game detail (sources tab)
+home scroll
+light theme
+update prompt
