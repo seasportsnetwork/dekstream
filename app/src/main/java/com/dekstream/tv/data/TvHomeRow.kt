@@ -65,7 +65,7 @@ object TvHomeRow {
                     .setDescription(nowTitle(ch) ?: "Live")
                     .setLive(true)
                     .setWeight(1000 - i)
-                    .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_16_9)
+                    .setPosterArtAspectRatio(TvContractCompat.PreviewPrograms.ASPECT_RATIO_1_1)
                     .setIntentUri(Uri.parse(play.toUri(Intent.URI_INTENT_SCHEME)))
                 ch.icon?.let { b.setPosterArtUri(Uri.parse(it)) }
                 helper.publishPreviewProgram(b.build())
