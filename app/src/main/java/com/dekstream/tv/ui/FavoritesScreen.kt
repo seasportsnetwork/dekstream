@@ -134,9 +134,11 @@ private fun EmptyFavorites(title: String, body: String, action: String, onAction
 
 /** Channel card: logo, what's on and how far in. */
 @Composable
-fun FavChannelTile(c: Channel, onClick: () -> Unit, onLongClick: (() -> Unit)?) {
+fun FavChannelTile(c: Channel, onClick: () -> Unit, onLongClick: (() -> Unit)?, preset: Program? = null) {
     val repo = DekStreamApp.instance.repo
-    val now by produceState<Program?>(null, c.streamId) { value = runCatching { repo?.nowNext(c)?.firstOrNull { it.isLive() } }.getOrNull() }
+    val now by produceState(preset, c.streamId, preset) {
+        if (preset == null) value = runCatching { repo?.nowNext(c)?.firstOrNull { it.isLive() } }.getOrNull()
+    }
     BentoCard(Modifier.fillMaxWidth().height(132.dp), onClick = onClick, onLongClick = onLongClick) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -181,8 +183,8 @@ fun HomeLayoutScreen(state: AppState) {
         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Pill("Live TV only", HomeLayout.hidden == HomeLayout.liveOnlyHidden, onClick = { set(HomeLayout.liveOnlyHidden) }, icon = Icons.Default.LiveTv)
             Pill("Live TV + Movies & Series", HomeLayout.hidden.isEmpty(), onClick = { set(emptySet()) })
-            Pill("Sports fan", HomeLayout.hidden == setOf("moods", "movies", "series", "continue"),
-                onClick = { set(setOf("moods", "movies", "series", "continue")) }, icon = Icons.Default.SportsFootball)
+            Pill("Sports fan", HomeLayout.hidden == setOf("moods", "movies", "series", "continue", "categories"),
+                onClick = { set(setOf("moods", "movies", "series", "continue", "categories")) }, icon = Icons.Default.SportsFootball)
         }
         Spacer(Modifier.height(18.dp))
         BentoCard(Modifier.fillMaxWidth()) {
