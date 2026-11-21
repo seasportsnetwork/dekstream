@@ -71,7 +71,8 @@ object TvHomeRow {
                 helper.publishPreviewProgram(b.build())
             }
             lastSignature = sig; lastAt = System.currentTimeMillis()
-        }
+            android.util.Log.i("DekTV", "Home row updated: ${list.size} channels (row $id)")
+        }.onFailure { android.util.Log.w("DekTV", "Home row failed", it) }
     }
 
     private fun clear(c: Context) {

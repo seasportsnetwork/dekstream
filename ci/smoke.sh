@@ -66,9 +66,11 @@ shot "$(printf %02d $n)-favorites-reorder"; n=$((n+1))
 key 4; sleep 1
 
 step "shield home screen row"
+adb shell content query --uri content://android.media.tv/channel --projection display_name:browsable:package_name > $OUT/tv-channels.txt 2>&1
+adb shell content query --uri content://android.media.tv/preview_program --projection title:channel_id > $OUT/tv-programs.txt 2>&1
 key 3; sleep 10
 shot "$(printf %02d $n)-launcher"; n=$((n+1))
-key 20; sleep 2; key 20; sleep 3
+for i in 1 2 3 4 5 6; do key 20; sleep 1; done; sleep 3
 shot "$(printf %02d $n)-launcher-rows"; n=$((n+1))
 
 step "update prompt"
