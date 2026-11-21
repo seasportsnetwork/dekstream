@@ -51,6 +51,7 @@ class DekStreamApp : Application() {
     var pendingTestGame by mutableStateOf<String?>(null)
     var pendingTestFav by mutableStateOf<Int?>(null)
     var pendingTestRoute by mutableStateOf<String?>(null)
+    private val memSamples = ArrayList<String>()
     var pendingTestPlay by mutableStateOf<String?>(null)
     /** The search/mic key was pressed: Search opens listening. */
     var voiceSearchRequested by mutableStateOf(false)
@@ -86,10 +87,25 @@ class DekStreamApp : Application() {
         instance = this
         // Keep the last crash so it can be shown in Settings > About (and sent to us).
         val previous = Thread.getDefaultUncaughtExceptionHandler()
+        // Memory samples every 30 s (last 20) so a crash report shows whether memory crept up or spiked.
+        kotlin.concurrent.thread(name = "dektv-mem", isDaemon = true) {
+            while (true) {
+                val rt = Runtime.getRuntime()
+                val used = (rt.totalMemory() - rt.freeMemory()) / 1_048_576
+                synchronized(memSamples) {
+                    memSamples += "${java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date())} ${used}MB/${rt.maxMemory() / 1_048_576}MB" +
+                        if (playerActive) " playing" else ""
+                    while (memSamples.size > 20) memSamples.removeAt(0)
+                }
+                Thread.sleep(30_000)
+            }
+        }
         Thread.setDefaultUncaughtExceptionHandler { t, e ->
             runCatching {
+                val mem = synchronized(memSamples) { memSamples.toList() }
                 java.io.File(filesDir, "last_crash.txt").writeText(
-                    "DekTV ${com.dekstream.tv.BuildConfig.VERSION_NAME} · ${java.util.Date()}\n" + android.util.Log.getStackTraceString(e))
+                    "DekTV ${com.dekstream.tv.BuildConfig.VERSION_NAME} · ${java.util.Date()}\n" + android.util.Log.getStackTraceString(e) +
+                        "\nMemory (every 30 s): " + mem.takeLast(10).joinToString(" | "))
             }
             previous?.uncaughtException(t, e)
         }
