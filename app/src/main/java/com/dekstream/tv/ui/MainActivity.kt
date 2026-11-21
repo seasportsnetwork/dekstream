@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
             } else if (app.session == null) app.store.profiles.value.firstOrNull()?.let { app.start(it) }
         }
         i?.getStringExtra("test_game")?.let { app.pendingTestGame = it }
+        i?.getStringExtra("test_play")?.let { app.pendingTestPlay = it }
         i?.getIntExtra("test_sync", -1)?.takeIf { it >= 0 }?.let { DekStreamAppRef.syncMode = it; app.pendingTestRoute = "sync" }
         i?.getIntExtra("test_fav", 0)?.takeIf { it > 0 }?.let { app.pendingTestFav = it }
         i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
@@ -158,6 +159,17 @@ private fun SignedIn() {
         val t = pendingTab ?: return@LaunchedEffect
         app.pendingTab = null
         state.stack.clear(); state.tab = t
+    }
+
+    // Debug test hook: play the first channel whose name contains test_play, full screen.
+    val testPlay = app.pendingTestPlay
+    LaunchedEffect(testPlay) {
+        val q = testPlay ?: return@LaunchedEffect
+        val r = app.repo
+        val all = runCatching { r?.allChannels() }.getOrNull().orEmpty()
+        val c = all.firstOrNull { it.name.contains(q, ignoreCase = true) } ?: all.firstOrNull()
+        if (c != null && r != null) { android.util.Log.i("DekTV", "SOAK playing ${c.name}"); state.play(r.liveRequest(c), all.take(50)) }
+        app.pendingTestPlay = null
     }
 
     // Debug test hook: open a screen.
