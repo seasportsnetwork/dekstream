@@ -432,7 +432,7 @@ private fun FeatureCard(f: Featured?, count: Int, index: Int, modifier: Modifier
             Box(Modifier.fillMaxSize().background(Brush.linearGradient(listOf(Color(0xFF15151A), DS.Accent.copy(alpha = 0.45f)))))
             Column(Modifier.align(Alignment.BottomStart).padding(20.dp)) {
                 BrandMark(34.dp, nameSize = 26)
-                Text("Your channels, movies and shows.", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
+                Text(if (HomeLayout.isLiveOnly) "Favorite a channel and what's on shows up here." else "Your channels, movies and shows.", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.padding(top = 6.dp))
             }
             return@BentoCard
         }

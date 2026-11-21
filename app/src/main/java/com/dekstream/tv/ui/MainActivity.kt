@@ -141,8 +141,7 @@ private fun SignedIn() {
     val testGame = app.pendingTestGame
     LaunchedEffect(testGame) {
         val key = testGame ?: return@LaunchedEffect
-        app.pendingTestGame = null
-        val l = app.sports.league(key) ?: return@LaunchedEffect
+        val l = app.sports.league(key) ?: run { app.pendingTestGame = null; return@LaunchedEffect }
         val game = run {
             var found: com.dekstream.tv.data.Game? = null
             for (d in 0..6) {
@@ -151,9 +150,10 @@ private fun SignedIn() {
                 if (found != null) break
             }
             found
-        } ?: return@LaunchedEffect
+        } ?: run { app.pendingTestGame = null; return@LaunchedEffect }
         state.stack.clear(); state.tab = Tab.Sports
         state.push(Route.GameDetail(game))
+        app.pendingTestGame = null // cleared last: clearing first would cancel this effect
     }
 
     // Open a channel from a reminder notification.
