@@ -1,5 +1,17 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.runtime.LaunchedEffect
+
+import androidx.compose.ui.Alignment
+
+import androidx.compose.foundation.layout.width
+
+import androidx.compose.foundation.layout.Spacer
+
+import androidx.compose.foundation.layout.Row
+
+import androidx.compose.material.icons.filled.Mic
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,14 +64,42 @@ fun SearchScreen(state: AppState) {
     val movies = repo.searchLoadedVod(q)
     val shows = repo.searchLoadedSeries(q)
 
+    // Voice search: Android's speech recognizer (the Shield remote's mic works here too).
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val voice = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+    ) { r ->
+        r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { q = it }
+    }
+    val canVoice = remember {
+        ctx.packageManager.queryIntentActivities(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0).isNotEmpty()
+    }
+    fun listen() {
+        runCatching {
+            voice.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Say a channel, show, team or movie"))
+        }
+    }
+    // Opened by the mic/search key or "voice" from elsewhere: start listening right away.
+    LaunchedEffect(DekStreamApp.instance.voiceSearchRequested) {
+        if (DekStreamApp.instance.voiceSearchRequested && canVoice) { DekStreamApp.instance.voiceSearchRequested = false; listen() }
+    }
+
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        OutlinedTextField(
-            value = q, onValueChange = { q = it }, singleLine = true,
-            placeholder = { Text("Search channels, movies, series") },
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-        )
+        Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = q, onValueChange = { q = it }, singleLine = true,
+                placeholder = { Text("Search channels, movies, series") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
+                modifier = Modifier.weight(1f),
+            )
+            if (canVoice) {
+                Spacer(Modifier.width(10.dp))
+                PillButton("Voice", { listen() }, Icons.Default.Mic, primary = true)
+            }
+        }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
             if (movies.isNotEmpty()) {
                 item { SectionTitle("Movies") }

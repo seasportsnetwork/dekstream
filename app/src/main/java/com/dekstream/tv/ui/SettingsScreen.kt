@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Autorenew
 import com.dekstream.tv.data.Updater
@@ -122,6 +123,29 @@ fun SettingsScreen(state: AppState) {
             BrandMark(32.dp, nameSize = 18)
             InfoLine("Version", BuildConfig.VERSION_NAME)
         }
+        if (app.isTv) {
+            SectionTitle("Shield home screen")
+            Card {
+                val ctx2 = androidx.compose.ui.platform.LocalContext.current
+                var row by remember { mutableStateOf(com.dekstream.tv.data.TvHomeRow.enabled(ctx2)) }
+                val shape = RoundedCornerShape(10.dp)
+                Row(
+                    Modifier.fillMaxWidth().focusRing(shape, 1.02f).clip(shape)
+                        .clickable { row = !row; com.dekstream.tv.data.TvHomeRow.setEnabled(ctx2, row) }.padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Default.Tv, null, tint = DS.Accent)
+                    Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                        Text("Your channels row", color = DS.Text, fontSize = 15.sp)
+                        Text("Favorite channels and what's on, right on the home screen. If it doesn't show, add it from the home screen's Customize channels.",
+                            color = DS.TextDim, fontSize = 12.sp)
+                    }
+                    Switch(row, onCheckedChange = { row = it; com.dekstream.tv.data.TvHomeRow.setEnabled(ctx2, it) },
+                        colors = SwitchDefaults.colors(checkedTrackColor = DS.Accent, checkedThumbColor = Color.White))
+                }
+            }
+        }
+
         SectionTitle("Updates")
         Card {
             val ctx = androidx.compose.ui.platform.LocalContext.current

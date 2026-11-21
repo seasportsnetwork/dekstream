@@ -182,6 +182,16 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
     private val _favorites = MutableStateFlow(loadIntSet("favs"))
     val favorites: StateFlow<Set<Int>> = _favorites
 
+    /** Moves a favorite earlier (-1) or later (+1). */
+    fun moveFavorite(streamId: Int, delta: Int) {
+        val l = _favorites.value.toMutableList()
+        val i = l.indexOf(streamId); if (i < 0) return
+        val j = (i + delta).coerceIn(0, l.size - 1); if (i == j) return
+        l.removeAt(i); l.add(j, streamId)
+        _favorites.value = LinkedHashSet(l)
+        saveIntList("favs", l)
+    }
+
     fun toggleFavorite(streamId: Int) {
         val s = _favorites.value.toMutableSet()
         if (!s.add(streamId)) s.remove(streamId)

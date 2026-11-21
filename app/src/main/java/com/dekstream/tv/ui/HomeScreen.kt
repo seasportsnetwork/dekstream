@@ -179,6 +179,14 @@ fun HomeScreen(state: AppState) {
             idx.programmesFor(c).filter { it.startMs > tick && it.startMs < tick + 6 * 3600_000L }.take(2).map { UpNext(c, it.toProgram()) }
         }.sortedBy { it.program.startMs }.take(24)
     }
+    // Keep the Shield home-screen row in step with your favorites.
+    LaunchedEffect(favChannels.map { it.streamId }, idx, tick / 900_000) {
+        if (favChannels.isEmpty()) return@LaunchedEffect
+        val list = favChannels
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.dekstream.tv.data.TvHomeRow.update(app, list) { c -> idx?.nowOn(c, System.currentTimeMillis())?.title }
+        }
+    }
     val playLive: (Channel, List<Channel>) -> Unit = { c, list -> app.prefs.markChannelWatched(c.streamId); state.play(repo.liveRequest(c), list) }
 
     BoxWithConstraints(Modifier.fillMaxSize().background(DS.Bg)) {
