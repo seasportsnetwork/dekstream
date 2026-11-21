@@ -49,6 +49,8 @@ class DekStreamApp : Application() {
     /** Debug test hook: tab to open (see MainActivity.handleTestIntent). */
     var pendingTab by mutableStateOf<com.dekstream.tv.ui.Tab?>(null)
     var pendingTestGame by mutableStateOf<String?>(null)
+    /** Game to watch from a notification: league key, game id, start time. */
+    var pendingGame by mutableStateOf<Triple<String, String, Long>?>(null)
     val channelMemory by lazy { com.dekstream.tv.data.ChannelMemory(this) }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

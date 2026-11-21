@@ -36,6 +36,7 @@
         </activity>
 
         <receiver android:name=".data.ReminderReceiver" android:exported="false" />
+        <receiver android:name=".data.GameAlarmReceiver" android:exported="false" />
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

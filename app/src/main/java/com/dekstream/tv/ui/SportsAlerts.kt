@@ -56,12 +56,35 @@ fun SportsAlertWatcher() {
     LaunchedEffect(session.key) {
         val snaps = HashMap<String, Snap>()
         val lastAlert = HashMap<String, Long>()
+        val soonSent = HashSet<String>()
         var first = true
+        var lastSchedule = 0L
         while (true) {
+            // Every 30 min: schedule "starts in 10 min" notifications for your teams' next games (next 4 days).
+            if (System.currentTimeMillis() - lastSchedule > 30 * 60_000) {
+                lastSchedule = System.currentTimeMillis()
+                runCatching {
+                    val favs0 = session.prefs.favTeams.value
+                    val leagues = favs0.map { it.leagueKey }.distinct().mapNotNull { app.sports.league(it) }
+                    val upcoming = ArrayList<Game>()
+                    for (d in 0..3) {
+                        val c = java.util.Calendar.getInstance(); c.add(java.util.Calendar.DAY_OF_YEAR, d)
+                        val date = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(c.time)
+                        for (l in leagues) upcoming += runCatching { app.sports.scoreboard(l, date) }.getOrDefault(emptyList()).filter { it.hasFavorite(favs0) }
+                    }
+                    com.dekstream.tv.data.GameAlarms.schedule(app, upcoming.distinctBy { it.id })
+                }
+            }
             val favs = session.prefs.favTeams.value
             val hide = session.prefs.hideScores.value
             val games = runCatching { app.sports.favoriteGames(favs) }.getOrDefault(emptyList()).map { it.second }.distinctBy { it.id }
             for (g in games) {
+                // Heads-up 10 minutes before your team plays (in the app; the notification covers when it's closed).
+                val untilStart = g.startMs - System.currentTimeMillis()
+                if (g.state == "pre" && untilStart in 1..(10 * 60_000L + 30_000) && soonSent.add(g.id)) {
+                    val matchup = "${g.away.nickname.ifBlank { g.away.abbr }} @ ${g.home.nickname.ifBlank { g.home.abbr }}"
+                    app.alert = SportsAlert(g.id + "soon", "Starts in ${(untilStart / 60_000).coerceAtLeast(1)} min", matchup, g)
+                }
                 val prev = snaps[g.id]
                 val now = Snap(g.state, g.home.score, g.away.score)
                 snaps[g.id] = now

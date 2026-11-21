@@ -1,5 +1,13 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.runtime.remember
+
+import androidx.compose.foundation.layout.Column
+
+import androidx.compose.material.icons.filled.Scoreboard
+
+import androidx.compose.material.icons.filled.NotificationsActive
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -67,6 +75,24 @@ fun SportsSettingsScreen(state: AppState) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = DS.Text)
                 }
                 Text("Sports & teams", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        item(span = { GridItemSpan(maxLineSpan) }) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            var alarms by remember { mutableStateOf(com.dekstream.tv.data.GameAlarms.enabled(ctx)) }
+            var ticker by remember { mutableStateOf(com.dekstream.tv.data.GameAlarms.tickerOn(ctx)) }
+            Column {
+                SectionLabel("ALERTS")
+                Pill(if (alarms) "Game alerts: on" else "Game alerts: off", alarms, onClick = {
+                    alarms = !alarms; com.dekstream.tv.data.GameAlarms.setEnabled(ctx, alarms)
+                }, icon = Icons.Default.NotificationsActive)
+                Text("A notification 10 minutes before your teams play, even when DekTV is closed. Watch opens the best channel.",
+                    color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp, bottom = 10.dp))
+                Pill(if (ticker) "Score ticker while watching: on" else "Score ticker while watching: off", ticker, onClick = {
+                    ticker = !ticker; com.dekstream.tv.data.GameAlarms.setTicker(ctx, ticker)
+                }, icon = Icons.Default.Scoreboard)
+                Text("Your teams' live scores in the corner of the player.", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
             }
         }
 
