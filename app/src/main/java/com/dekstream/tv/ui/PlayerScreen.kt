@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -167,7 +168,10 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     var showChannels by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
     var digits by remember { mutableStateOf("") }
-    var resizeIdx by remember { mutableIntStateOf(0) }
+    var resizeIdx by remember { mutableIntStateOf(app.channelMemory.resize(request.channel?.streamId)) }
+    /** The channel before this one (Previous channel button / LAST key). */
+    var prevChannel by remember { mutableStateOf<Channel?>(null) }
+    var audioApplied by remember { mutableStateOf<String?>(null) }
     var sleepAt by remember { mutableLongStateOf(0L) }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
@@ -219,7 +223,26 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
             }
             override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying || player.playWhenReady }
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) { quality = qualityOf(player) }
-            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) { quality = qualityOf(player) }
+            override fun onTracksChanged(tracks: androidx.media3.common.Tracks) {
+                quality = qualityOf(player)
+                // Put back the audio track picked last time on this channel (once per load).
+                val ch = current.channel ?: return
+                if (audioApplied == current.url) return
+                val want = app.channelMemory.audio(ch.streamId) ?: run { audioApplied = current.url; return }
+                for (g in tracks.groups) {
+                    if (g.type != androidx.media3.common.C.TRACK_TYPE_AUDIO) continue
+                    for (i in 0 until g.length) {
+                        val f = g.getTrackFormat(i)
+                        val hit = (want.first != null && f.language == want.first) || (want.second.isNotBlank() && f.label == want.second)
+                        if (hit && g.isTrackSupported(i)) {
+                            audioApplied = current.url
+                            if (!g.isTrackSelected(i)) player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                                .setOverrideForType(androidx.media3.common.TrackSelectionOverride(g.mediaTrackGroup, i)).build()
+                            return
+                        }
+                    }
+                }
+            }
             override fun onPlayerError(e: PlaybackException) {
                 error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
                 if (current.isLive) {
@@ -318,6 +341,9 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     fun switchTo(c: Channel) {
         val r = repo ?: return
         app.prefs.markChannelWatched(c.streamId)
+        current.channel?.let { if (it.streamId != c.streamId) prevChannel = it }
+        resizeIdx = app.channelMemory.resize(c.streamId)
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO).build()
         tried.clear()
         current = r.liveRequest(c)
         showChannels = false
@@ -396,6 +422,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                         if (player.isPlaying) player.pause() else player.play(); showControls(); return@onPreviewKeyEvent true
                     }
                     KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_SETTINGS -> { showOptions = true; return@onPreviewKeyEvent true }
+                    KeyEvent.KEYCODE_LAST_CHANNEL -> { prevChannel?.let { switchTo(it) }; return@onPreviewKeyEvent true }
                     KeyEvent.KEYCODE_CHANNEL_UP -> { zap(-1); return@onPreviewKeyEvent true }
                     KeyEvent.KEYCODE_CHANNEL_DOWN -> { zap(1); return@onPreviewKeyEvent true }
                     KeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> { player.seekForward(); return@onPreviewKeyEvent true }
@@ -541,12 +568,20 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                     ) {
                         if (current.isLive && zapList.size > 1) CtrlButton(Icons.AutoMirrored.Filled.FormatListBulleted, "Channels") { showChannels = true }
+                        prevChannel?.let { pc -> if (current.isLive) PillButton(Icons.Default.SwapHoriz, "Back to ${pc.name.take(18)}") { switchTo(pc) } }
                         CtrlButton(Icons.Default.Replay10, "Back 10 seconds") { player.seekBack(); touch++ }
                         CtrlButton(
                             if (playing && player.playWhenReady) Icons.Default.Pause else Icons.Default.PlayArrow,
                             if (player.playWhenReady) "Pause" else "Play",
                             big = true, focus = playFocus,
-                        ) { if (player.playWhenReady) player.pause() else player.play(); playing = player.playWhenReady; touch++ }
+                        ) {
+                            if (player.playWhenReady) {
+                                player.pause()
+                                if (current.isLive && !player.isCurrentMediaItemSeekable)
+                                    notice = "This stream can't be paused or rewound. In Settings, set Live TV stream format to HLS to pause live TV."
+                            } else player.play()
+                            playing = player.playWhenReady; touch++
+                        }
                         CtrlButton(Icons.Default.Forward10, "Forward 10 seconds") { player.seekForward(); touch++ }
                         if (isLiveWindow && behindLive > 15_000) PillButton(Icons.Default.LiveTv, "Go live") { player.seekToDefaultPosition(); touch++ }
                         if (canStartOver) PillButton(Icons.Default.History, "Start over") { startOver() }
@@ -555,7 +590,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                         CtrlButton(Icons.Default.Subtitles, "Audio & subtitles") { showOptions = true }
                         CtrlButton(Icons.Default.Bedtime, "Sleep timer") { showOptions = true }
                         CtrlButton(Icons.Default.AspectRatio, "Picture size: ${resizeModes[resizeIdx].second}") {
-                            resizeIdx = (resizeIdx + 1) % resizeModes.size; touch++
+                            resizeIdx = (resizeIdx + 1) % resizeModes.size; app.channelMemory.setResize(current.channel?.streamId, resizeIdx); touch++
                         }
                     }
                 }
@@ -579,8 +614,9 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                 programmeEnd = nowProg?.endMs,
                 onSleep = { sleepAt = it },
                 resizeIdx = resizeIdx,
-                onResize = { resizeIdx = it },
+                onResize = { resizeIdx = it; app.channelMemory.setResize(current.channel?.streamId, it) },
                 onDismiss = { showOptions = false; touch++ },
+                onAudioPicked = { lang, label -> current.channel?.let { app.channelMemory.setAudio(it.streamId, lang, label) } },
             )
         }
     }

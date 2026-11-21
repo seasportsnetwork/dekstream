@@ -89,6 +89,7 @@ fun PlayerOptionsDialog(
     resizeIdx: Int,
     onResize: (Int) -> Unit,
     onDismiss: () -> Unit,
+    onAudioPicked: (language: String?, label: String) -> Unit = { _, _ -> },
 ) {
     var refresh by remember { mutableIntStateOf(0) }
     val tracks = remember(refresh) { player.currentTracks }
@@ -117,7 +118,10 @@ fun PlayerOptionsDialog(
             SectionLabel("AUDIO")
             if (audio.isEmpty()) Text("Only one audio track.", color = DS.TextDim, fontSize = 14.sp)
             audio.forEachIndexed { i, c ->
-                OptionRow(c.label, c.selected, Modifier.then(if (i == 0) Modifier.focusRequester(first) else Modifier)) { pick(c, C.TRACK_TYPE_AUDIO) }
+                OptionRow(c.label, c.selected, Modifier.then(if (i == 0) Modifier.focusRequester(first) else Modifier)) {
+                    pick(c, C.TRACK_TYPE_AUDIO)
+                    onAudioPicked(c.group?.getTrackFormat(c.index)?.language, c.label)
+                }
             }
 
             SectionLabel("SUBTITLES")

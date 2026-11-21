@@ -237,6 +237,8 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
                         try {
                             app.provider(src).verify()
                             app.store.saveSource(src)
+                            // Edited playlist: drop the saved copy so the new one loads.
+                            com.dekstream.tv.data.PlaylistCache(app.filesDir, src.id).clear()
                             val sess = app.session
                             when {
                                 firstRun || sess == null -> app.useSource(src)
