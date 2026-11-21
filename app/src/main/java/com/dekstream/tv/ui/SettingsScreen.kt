@@ -179,7 +179,7 @@ fun SettingsScreen(state: AppState) {
         crash?.let { text ->
             SectionTitle("Last crash")
             Card {
-                Text(text.lines().take(18).joinToString("\n"), color = DS.TextDim, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                Text((text.lines().take(16) + text.lines().filter { it.startsWith("Memory") }).joinToString("\n"), color = DS.TextDim, fontSize = 11.sp, fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
                 Row(Modifier.padding(top = 10.dp)) {
                     CategoryChip("Clear", false) { crashFile.delete(); crash = null }
                 }
