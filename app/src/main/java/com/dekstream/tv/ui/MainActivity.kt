@@ -49,6 +49,9 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(i: Intent?) {
         val id = i?.getIntExtra(EXTRA_PLAY_STREAM, -1) ?: -1
         if (id >= 0) DekStreamApp.instance.pendingPlayStream = id
+        val gid = i?.getStringExtra(EXTRA_GAME_ID)
+        val gl = i?.getStringExtra(EXTRA_GAME_LEAGUE)
+        if (gid != null && gl != null) DekStreamApp.instance.pendingGame = Triple(gl, gid, i.getLongExtra(EXTRA_GAME_START, System.currentTimeMillis()))
         if (com.dekstream.tv.BuildConfig.DEBUG) handleTestIntent(i)
     }
 
@@ -84,7 +87,12 @@ class MainActivity : ComponentActivity() {
         ) ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7)
     }
 
-    companion object { const val EXTRA_PLAY_STREAM = "play_stream" }
+    companion object {
+        const val EXTRA_PLAY_STREAM = "play_stream"
+        const val EXTRA_GAME_LEAGUE = "game_league"
+        const val EXTRA_GAME_ID = "game_id"
+        const val EXTRA_GAME_START = "game_start"
+    }
 
     /** Pressing Home while watching drops the video into a picture-in-picture window. */
     override fun onUserLeaveHint() {
@@ -154,6 +162,18 @@ private fun SignedIn() {
         state.stack.clear(); state.tab = Tab.Sports
         state.push(Route.GameDetail(game))
         app.pendingTestGame = null // cleared last: clearing first would cancel this effect
+    }
+
+    // "Watch" on a game notification: find the game and play its best channel.
+    val pendingGame = app.pendingGame
+    LaunchedEffect(pendingGame) {
+        val (lk, gid, start) = pendingGame ?: return@LaunchedEffect
+        val league = app.sports.league(lk)
+        val date = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date(start))
+        val g = league?.let { l -> runCatching { app.sports.scoreboard(l, date) }.getOrDefault(emptyList()).firstOrNull { it.id == gid } }
+        if (g == null) { state.tab = Tab.Sports }
+        else watchAlert(state, SportsAlert(gid + "open", "Watch", "", g))
+        app.pendingGame = null // last: clearing first would cancel this effect
     }
 
     // Open a channel from a reminder notification.

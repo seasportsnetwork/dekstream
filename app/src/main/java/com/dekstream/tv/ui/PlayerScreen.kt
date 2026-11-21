@@ -1,5 +1,7 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.runtime.collectAsState
+
 import android.app.Activity
 import android.view.KeyEvent
 import android.view.ViewGroup
@@ -487,6 +489,8 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         }
 
         // Self-healing notice
+        if (!pip) ScoreTicker(Modifier.align(Alignment.TopEnd).padding(top = if (controls) 76.dp else 20.dp, end = 20.dp))
+
         AnimatedVisibility(notice != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)) {
             Row(
                 Modifier.clip(RoundedCornerShape(24.dp)).background(Color(0xE6151922)).padding(horizontal = 18.dp, vertical = 10.dp),
@@ -777,4 +781,36 @@ private fun QualityBadge(text: String, primary: Boolean) {
     }
     Text(text, color = if (primary && text == "4K") Color.Black else Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold,
         modifier = Modifier.clip(RoundedCornerShape(5.dp)).background(bg).padding(horizontal = 7.dp, vertical = 2.dp))
+}
+
+
+/** Your teams' live games in the corner while you watch (Sports settings → Score ticker). */
+@Composable
+private fun ScoreTicker(modifier: Modifier) {
+    val app = DekStreamApp.instance
+    val ctx = LocalContext.current
+    if (!com.dekstream.tv.data.GameAlarms.tickerOn(ctx)) return
+    val favs by app.prefs.favTeams.collectAsState()
+    val hide by app.prefs.hideScores.collectAsState()
+    val games by produceState(emptyList<com.dekstream.tv.data.Game>(), favs) {
+        while (true) {
+            value = runCatching { app.sports.favoriteGames(favs) }.getOrDefault(emptyList()).map { it.second }
+                .distinctBy { it.id }.filter { it.isLive }.take(3)
+            delay(60_000)
+        }
+    }
+    if (games.isEmpty()) return
+    Column(modifier, horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        games.forEach { g ->
+            Row(
+                Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0xCC0B0B0F)).padding(horizontal = 10.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(Color(0xFFFF3B30)))
+                Text("  ${g.away.abbr}" + (if (hide) "" else " ${g.away.score ?: "-"}") + "  ${g.home.abbr}" + (if (hide) "" else " ${g.home.score ?: "-"}"),
+                    color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text("  ${g.detail}", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1)
+            }
+        }
+    }
 }
