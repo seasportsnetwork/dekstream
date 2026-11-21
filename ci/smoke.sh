@@ -50,6 +50,11 @@ start --es test_tab Home --ei test_palette 4; sleep 8
 shot "$(printf %02d $n)-home-light"; n=$((n+1))
 start --ei test_palette 0
 
+step "update prompt"
+start --es test_tab Settings --ez test_update true; sleep 6
+shot "$(printf %02d $n)-update-prompt"; n=$((n+1))
+key 4; sleep 2
+
 adb logcat -d > $OUT/logcat.txt
 
 # ---- Verdict ----

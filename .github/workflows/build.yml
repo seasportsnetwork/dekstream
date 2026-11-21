@@ -53,9 +53,17 @@ jobs:
           name: DekTV
           path: DekTV.apk
 
+      - name: Release notes
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          printf '%s\n' "$MSG" | grep -viE '^(co-authored-by|claude-session):' | sed '/^[[:space:]]*$/N;/^\n$/D' > notes.md
+          [ -s notes.md ] || echo "Bug fixes and improvements." > notes.md
+
       - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
+          body_path: notes.md
           tag_name: v3.0.${{ github.run_number }}
           name: DekTV v3.0.${{ github.run_number }}
           make_latest: true

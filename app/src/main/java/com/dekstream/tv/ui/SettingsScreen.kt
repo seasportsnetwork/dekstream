@@ -5,6 +5,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.Autorenew
+import com.dekstream.tv.data.Updater
+import kotlinx.coroutines.launch
 import androidx.compose.material.icons.filled.NoAdultContent
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -116,6 +120,30 @@ fun SettingsScreen(state: AppState) {
         Card {
             BrandMark(32.dp, nameSize = 18)
             InfoLine("Version", BuildConfig.VERSION_NAME)
+        }
+        SectionTitle("Updates")
+        Card {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            NavRow(Icons.Default.SystemUpdate, "Check for updates",
+                Updater.status ?: "Current version v${BuildConfig.VERSION_NAME}") {
+                scope.launch { if (Updater.check(ctx, manual = true) != null) Updater.dismissed = false }
+            }
+            var auto by remember { mutableStateOf(Updater.autoCheck(ctx)) }
+            val shape = RoundedCornerShape(10.dp)
+            Row(
+                Modifier.fillMaxWidth().focusRing(shape, 1.02f).clip(shape)
+                    .clickable { auto = !auto; Updater.setAutoCheck(ctx, auto) }.padding(vertical = 8.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Autorenew, null, tint = DS.Accent)
+                Column(Modifier.padding(start = 14.dp).weight(1f)) {
+                    Text("Check automatically", color = DS.Text, fontSize = 15.sp)
+                    Text("Look for a new version each time DekTV opens", color = DS.TextDim, fontSize = 12.sp)
+                }
+                Switch(auto, onCheckedChange = { auto = it; Updater.setAutoCheck(ctx, it) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = DS.Accent, checkedThumbColor = Color.White))
+            }
         }
         val crashFile = java.io.File(app.filesDir, "last_crash.txt")
         var crash by remember { mutableStateOf(runCatching { crashFile.takeIf { it.exists() }?.readText() }.getOrNull()) }
