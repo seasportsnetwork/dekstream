@@ -73,6 +73,25 @@ shot "$(printf %02d $n)-launcher"; n=$((n+1))
 for i in 1 2 3 4 5 6; do key 20; sleep 1; done; sleep 3
 shot "$(printf %02d $n)-launcher-rows"; n=$((n+1))
 
+step "sync: send screen + fetch setup over the network"
+start --ei test_sync 1; sleep 6
+shot "$(printf %02d $n)-sync-send"; n=$((n+1))
+line=$(adb logcat -d | grep "SYNC code=" | tail -1)
+scode=$(echo "$line" | sed -E 's/.*code=([0-9]+).*/\1/'); sport=$(echo "$line" | sed -E 's/.*port=([0-9]+).*/\1/')
+if [ -n "$scode" ] && [ -n "$sport" ]; then
+  adb forward tcp:18787 tcp:$sport >/dev/null
+  curl -s -o $OUT/sync.json -w "%{http_code}" "http://127.0.0.1:18787/sync?code=$scode" > $OUT/sync-status.txt
+  curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:18787/sync?code=000000" > $OUT/sync-wrong.txt
+  echo "sync: right code -> $(cat $OUT/sync-status.txt), wrong code -> $(cat $OUT/sync-wrong.txt), $(wc -c < $OUT/sync.json) bytes" | tee $OUT/sync-result.txt
+  rm -f $OUT/sync.json
+else
+  echo "sync: no code in log" | tee $OUT/sync-result.txt
+fi
+key 4; sleep 2
+start --ei test_sync 2; sleep 6
+shot "$(printf %02d $n)-sync-receive"; n=$((n+1))
+key 4; sleep 2
+
 step "update prompt"
 start --es test_tab Settings --ez test_update true; sleep 6
 shot "$(printf %02d $n)-update-prompt"; n=$((n+1))

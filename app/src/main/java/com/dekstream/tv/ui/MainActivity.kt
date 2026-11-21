@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
             } else if (app.session == null) app.store.profiles.value.firstOrNull()?.let { app.start(it) }
         }
         i?.getStringExtra("test_game")?.let { app.pendingTestGame = it }
+        i?.getIntExtra("test_sync", -1)?.takeIf { it >= 0 }?.let { DekStreamAppRef.syncMode = it; app.pendingTestRoute = "sync" }
         i?.getIntExtra("test_fav", 0)?.takeIf { it > 0 }?.let { app.pendingTestFav = it }
         i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
         if (i?.getBooleanExtra("test_update", false) == true) {
@@ -159,6 +160,13 @@ private fun SignedIn() {
         state.stack.clear(); state.tab = t
     }
 
+    // Debug test hook: open a screen.
+    val testRoute = app.pendingTestRoute
+    LaunchedEffect(testRoute) {
+        if (testRoute == "sync") { state.stack.clear(); state.tab = Tab.Settings; state.push(Route.Sync) }
+        app.pendingTestRoute = null
+    }
+
     // Debug test hook: favorite the first N channels.
     val testFav = app.pendingTestFav
     LaunchedEffect(testFav) {
@@ -243,6 +251,7 @@ private fun SignedIn() {
         is Route.KidsRules -> KidsRulesScreen(top.profileId, state)
         Route.AppearanceSettings -> AppearanceScreen(state)
         Route.HomeSettings -> HomeLayoutScreen(state)
+        Route.Sync -> SyncScreen(state)
         Route.ChannelManager -> ChannelManagerScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }

@@ -47,6 +47,7 @@ sealed interface Route {
     data class KidsRules(val profileId: String) : Route
     data object AppearanceSettings : Route
     data object HomeSettings : Route
+    data object Sync : Route
     data object ChannelManager : Route
     /** Full-screen multiview pre-filled with channels (e.g. from Sports). */
     data class Multiview(val channels: List<Channel>, val games: List<Game> = emptyList()) : Route
