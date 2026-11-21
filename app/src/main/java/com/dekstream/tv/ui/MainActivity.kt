@@ -69,6 +69,11 @@ class MainActivity : ComponentActivity() {
             } else if (app.session == null) app.store.profiles.value.firstOrNull()?.let { app.start(it) }
         }
         i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
+        if (i?.getBooleanExtra("test_update", false) == true) {
+            com.dekstream.tv.data.Updater.available = com.dekstream.tv.data.UpdateInfo("v9.9.9", "9.9.9",
+                "Sports day picker\nAdult content filter\nFavorites screen", "", 0)
+            com.dekstream.tv.data.Updater.dismissed = false
+        }
         i?.getIntExtra("test_palette", -1)?.takeIf { it >= 0 }?.let { Appearance.paletteIdx = it }
     }
 
@@ -120,6 +125,8 @@ private fun SignedIn() {
     val app = DekStreamApp.instance
     val state = remember { AppState() }
     val top = state.stack.lastOrNull()
+
+    UpdatePrompt()
 
     // Debug test hook: jump to a tab.
     val pendingTab = app.pendingTab
