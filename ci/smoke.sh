@@ -38,6 +38,13 @@ step "live tv: move focus (no autoplay), then OK = preview"
 start --es test_tab Live; sleep 8
 key 22 22; sleep 1; key 20 20 20; sleep 4; shot "$(printf %02d $n)-live-focus"; n=$((n+1))
 key 23; sleep 8; shot "$(printf %02d $n)-live-preview"; n=$((n+1))
+step "player: full screen with quality badge"
+key 23; sleep 10; key 23; sleep 1; shot "$(printf %02d $n)-player"; n=$((n+1))
+key 4; sleep 2; key 4; sleep 2
+
+step "game detail (sources tab)"
+start --es test_game nba; sleep 15
+shot "$(printf %02d $n)-game"; n=$((n+1))
 key 4; sleep 2
 
 step "home scroll"

@@ -28,8 +28,8 @@ object HomeLayout {
         "favorites" to "Favorite channels",
         "recent" to "Recent channels",
         "teams" to "My teams",
-        "movies" to "Movie rows",
-        "series" to "Series rows",
+        "movies" to "Movies on Home",
+        "series" to "Series on Home",
     )
     var hidden by mutableStateOf(emptySet<String>())
 

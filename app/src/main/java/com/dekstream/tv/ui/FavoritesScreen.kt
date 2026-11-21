@@ -176,10 +176,11 @@ fun HomeLayoutScreen(state: AppState) {
     fun set(h: Set<String>) { HomeLayout.hidden = h; st.homeHidden = h }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp).widthIn(max = 680.dp)) {
         Text("Home screen", color = DS.Text, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
-        Text("Pick a starting point, then turn sections on or off.", color = DS.TextDim, fontSize = 14.sp)
+        Text("Home is built for Live TV. Turn on Movies and Series here if you want them on Home too — they still have their own tabs either way.",
+            color = DS.TextDim, fontSize = 14.sp)
         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Pill("Everything", HomeLayout.hidden.isEmpty(), onClick = { set(emptySet()) })
             Pill("Live TV only", HomeLayout.hidden == HomeLayout.liveOnlyHidden, onClick = { set(HomeLayout.liveOnlyHidden) }, icon = Icons.Default.LiveTv)
+            Pill("Live TV + Movies & Series", HomeLayout.hidden.isEmpty(), onClick = { set(emptySet()) })
             Pill("Sports fan", HomeLayout.hidden == setOf("moods", "movies", "series", "continue"),
                 onClick = { set(setOf("moods", "movies", "series", "continue")) }, icon = Icons.Default.SportsFootball)
         }

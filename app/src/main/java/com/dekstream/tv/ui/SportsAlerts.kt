@@ -111,7 +111,7 @@ suspend fun watchAlert(state: AppState, a: SportsAlert) {
     app.alert = null
     val chans = repo.allChannels()
     val idx = repo.guideIndex()
-    val best = SportsRepo.matchChannels(a.game, chans, idx).firstOrNull()?.channel
+    val best = SportsRepo.matchChannelsAsync(a.game, chans, idx).firstOrNull()?.channel
     if (best == null) { state.push(Route.GameDetail(a.game)); return }
     app.prefs.markChannelWatched(best.streamId)
     state.playReplacing(repo.liveRequest(best))

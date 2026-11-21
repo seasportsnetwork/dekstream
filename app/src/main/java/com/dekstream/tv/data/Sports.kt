@@ -273,8 +273,18 @@ class SportsRepo(private val http: OkHttpClient) {
         if (Regex("T\\d{2}:\\d{2}Z$").containsMatchIn(d)) d.replace("Z", ":00Z") else d
 
     companion object {
+        private val RX_NON = Regex("[^a-z0-9 ]")
+        private val RX_WS = Regex("\\s+")
+        private val RX_US = Regex(" (us|usa) ")
+        private val RX_4K = Regex(" (4k|uhd) ")
+        private val RX_FHD = Regex(" (fhd|1080p?) ")
+        private val RX_HD = Regex(" hd ")
         private fun norm(s: String) =
-            " " + s.lowercase().replace(Regex("[^a-z0-9 ]"), " ").replace(Regex("\\s+"), " ").trim() + " "
+            " " + s.lowercase().replace(RX_NON, " ").replace(RX_WS, " ").trim() + " "
+
+        /** Same as [matchChannels], off the main thread (big playlists take a while). */
+        suspend fun matchChannelsAsync(game: Game, channels: List<Channel>, epg: EpgIndex?): List<ChannelMatch> =
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { matchChannels(game, channels, epg) }
 
         private fun words(t: TeamSide): List<String> =
             listOf(t.nickname, t.name).map { norm(it).trim() }.filter { it.length >= 3 }.distinct()
@@ -295,8 +305,13 @@ class SportsRepo(private val http: OkHttpClient) {
             val netW = game.broadcasts.flatMap { networkAliases(it) }.map { norm(it).trim() }.distinct()
 
             val out = ArrayList<ChannelMatch>()
+            val nameW = homeW + awayW
             for (c in channels) {
+                val n = norm(c.name)
+                val nameHit = nameW.any { n.contains(" $it ") }
+                val netHit = !nameHit && netW.any { n.contains(" $it ") }
                 val prog = epg?.nowOn(c, at)
+                if (prog == null && !nameHit && !netHit) continue
                 var score = 0
                 var confirmed = false
                 if (prog != null) {
@@ -307,16 +322,14 @@ class SportsRepo(private val http: OkHttpClient) {
                     else if ((h || a) && leagueW.any { text.contains(" $it ") }) { score = 150; confirmed = true }
                 }
                 if (!confirmed) {
-                    val n = norm(c.name)
-                    if ((homeW + awayW).any { n.contains(" $it ") }) score = 60
-                    else if (netW.any { n.contains(" $it ") }) score = 40
+                    if (nameHit) score = 60
+                    else if (netHit) score = 40
                 }
                 if (score == 0) continue
-                val n = norm(c.name)
-                if (Regex(" (us|usa) ").containsMatchIn(n)) score += 8
-                if (Regex(" (4k|uhd) ").containsMatchIn(n)) score += 5
-                else if (Regex(" (fhd|1080p?) ").containsMatchIn(n)) score += 4
-                else if (Regex(" hd ").containsMatchIn(n)) score += 2
+                if (RX_US.containsMatchIn(n)) score += 8
+                if (RX_4K.containsMatchIn(n)) score += 5
+                else if (RX_FHD.containsMatchIn(n)) score += 4
+                else if (RX_HD.containsMatchIn(n)) score += 2
                 out += ChannelMatch(c, prog, confirmed, score)
             }
             return out.sortedByDescending { it.score }.take(60)

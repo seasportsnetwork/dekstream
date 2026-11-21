@@ -1,5 +1,15 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.runtime.saveable.rememberSaveable
+
+import androidx.compose.runtime.mutableIntStateOf
+
+import androidx.compose.material.icons.filled.LiveTv
+
+import androidx.compose.material.icons.filled.BarChart
+
+import androidx.compose.foundation.lazy.LazyRow
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -79,38 +89,39 @@ fun GameDetailScreen(initial: Game, state: AppState) {
         while (game.state != "post") { delay(45_000); game = runCatching { app.sports.refresh(game) }.getOrDefault(game) }
     }
 
-    // Check every channel's guide (one xmltv download, cached 30 min), then rank.
+    // Find channels fast: names + any cached guide first, then the full guide (saved on the device),
+    // and only ask the provider channel-by-channel when there's no full guide. All off the main thread.
     var finishing by remember { mutableStateOf(true) }
     val matches by produceState<Load<List<ChannelMatch>>>(Load.Loading, initial.id) {
-        val all = runCatching { repo.allChannels() }.getOrElse { value = Load.Err(it.message ?: "Couldn't load channels"); return@produceState }
-        // 1) Instant: name matches, plus the full guide if it's already cached.
-        var current = SportsRepo.matchChannels(initial, all, app.epg.takeIf { it.isLoaded })
+        val all = runCatching { repo.allChannels() }.getOrElse { value = Load.Err(it.message ?: "Couldn't load channels"); finishing = false; return@produceState }
+        var current = SportsRepo.matchChannelsAsync(initial, all, app.epg.takeIf { it.isLoaded })
         value = Load.Ok(current)
-        // 2) Fast: check the top candidates' own guide listings in parallel.
-        val at = if (initial.isLive) System.currentTimeMillis() else initial.startMs + 15 * 60_000
-        val quick = kotlinx.coroutines.coroutineScope {
-            current.filter { !it.confirmed }.take(24).map { m ->
-                async {
-                    val progs = runCatching { repo.fullEpg(m.channel) }.getOrDefault(emptyList())
-                    val p = progs.firstOrNull { at >= it.startMs && at < it.endMs }
-                    if (p != null && SportsRepo.programmeShows(initial, p.title, p.description))
-                        m.copy(programme = com.dekstream.tv.data.EpgIndex.Entry(p.title, p.description, p.startMs, p.endMs), confirmed = true, score = m.score + 150)
-                    else m
-                }
-            }.awaitAll()
-        }
-        val byId = quick.associateBy { it.channel.streamId }
-        current = current.map { byId[it.channel.streamId] ?: it }.sortedByDescending { it.score }
-        value = Load.Ok(current)
-        // 3) Thorough: the whole guide (cached on the device after the first time).
-        val idx = repo.guideIndex()
+        val idx = runCatching { repo.guideIndex() }.getOrNull()
         if (idx != null) {
-            val full = SportsRepo.matchChannels(initial, all, idx)
-            val merged = (current.filter { it.confirmed } + full).distinctBy { it.channel.streamId }.sortedByDescending { it.score }
-            value = Load.Ok(merged)
+            current = SportsRepo.matchChannelsAsync(initial, all, idx)
+            value = Load.Ok(current)
+        }
+        if (idx == null || current.none { it.confirmed }) {
+            val at = if (initial.isLive) System.currentTimeMillis() else initial.startMs + 15 * 60_000
+            val quick = kotlinx.coroutines.coroutineScope {
+                current.filter { !it.confirmed }.take(24).map { m ->
+                    async {
+                        val progs = runCatching { repo.fullEpg(m.channel) }.getOrDefault(emptyList())
+                        val p = progs.firstOrNull { at >= it.startMs && at < it.endMs }
+                        if (p != null && SportsRepo.programmeShows(initial, p.title, p.description))
+                            m.copy(programme = com.dekstream.tv.data.EpgIndex.Entry(p.title, p.description, p.startMs, p.endMs), confirmed = true, score = m.score + 150)
+                        else m
+                    }
+                }.awaitAll()
+            }
+            val byId = quick.associateBy { it.channel.streamId }
+            current = current.map { byId[it.channel.streamId] ?: it }.sortedByDescending { it.score }
+            value = Load.Ok(current)
         }
         finishing = false
     }
+    var tab by rememberSaveable(initial.id) { mutableIntStateOf(0) }
+    var filt by rememberSaveable(initial.id) { mutableIntStateOf(0) }
 
     val list = matches.valueOrNull().orEmpty()
     val confirmed = list.filter { it.confirmed }
@@ -174,43 +185,92 @@ fun GameDetailScreen(initial: Game, state: AppState) {
                 if (extra.isNotBlank()) Text(extra, color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 10.dp))
             }
 
-            if (matches is Load.Loading || finishing) {
-                item {
-                    Row(Modifier.padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(color = DS.Accent, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        Text(
-                            if (list.isNotEmpty()) "  Confirming with your guide…" else if (epgStatus == EpgIndex.Status.Loading) "  Checking the guide on all your channels…" else "  Finding channels…",
-                            color = DS.TextDim, fontSize = 14.sp,
-                        )
+            // Tabs: Sources first, stats inside their own tab.
+            item {
+                Row(Modifier.padding(top = 20.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Segmented(
+                        listOf(
+                            (if (list.isEmpty()) "Sources" else "Sources (${list.size})") to Icons.Default.LiveTv,
+                            "Stats" to Icons.Default.BarChart,
+                        ),
+                        tab,
+                    ) { tab = it }
+                    if (finishing) {
+                        CircularProgressIndicator(color = DS.Accent, modifier = Modifier.padding(start = 14.dp).size(16.dp), strokeWidth = 2.dp)
+                        Text(if (list.isEmpty()) "  Finding channels…" else "  Checking your guide…", color = DS.TextDim, fontSize = 13.sp)
                     }
                 }
             }
-            if (!hide && game.state != "pre") {
-                val list = plays.valueOrNull().orEmpty()
-                if (list.isNotEmpty()) item { CatchMeUpCard(game, list) }
-                val bs = box.valueOrNull()
-                if (bs != null) item { BoxScoreCard(game, bs) }
-            }
-            if (confirmed.isNotEmpty()) {
-                item { SectionLabel("WATCH ON · CONFIRMED IN YOUR GUIDE") }
-                items(confirmed, key = { "c" + it.channel.streamId }) { m -> MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, confirmed) } }
-            }
-            if (guesses.isNotEmpty()) {
-                item { SectionLabel(if (confirmed.isEmpty()) "POSSIBLE CHANNELS · NOT IN GUIDE" else "OTHER POSSIBLE CHANNELS") }
-                items(guesses, key = { "g" + it.channel.streamId }) { m -> MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, guesses) } }
-            }
-            if (matches is Load.Ok && list.isEmpty() && !finishing) {
+            if (tab == 0) {
+                val hdPlus = { m: ChannelMatch -> SportsRepo.qualityTags(m.channel.name).any { it == "4K" || it == "FHD" } }
+                val filters = listOf(
+                    "All" to list.size,
+                    "In your guide" to confirmed.size,
+                    "FHD / 4K" to list.count(hdPlus),
+                    "Pinned" to list.count { it.channel.streamId in pinned },
+                )
                 item {
-                    Text(
-                        "No channel in your guide mentions this game yet. Guides usually list games an hour or two before they start.",
-                        color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 24.dp),
-                    )
+                    LazyRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(filters.size) { i ->
+                            val (label, n) = filters[i]
+                            Pill(if (i == 0) label else "$label · $n", filt == i, onClick = { filt = i })
+                        }
+                    }
                 }
-            }
-            if (epgStatus == EpgIndex.Status.Failed) {
-                item {
-                    Text("Couldn't download your provider's full guide, so these are name matches only.",
-                        color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
+                val shown = when (filt) {
+                    1 -> confirmed
+                    2 -> list.filter(hdPlus)
+                    3 -> list.filter { it.channel.streamId in pinned }
+                    else -> list
+                }
+                val shownConfirmed = shown.filter { it.confirmed }
+                val shownGuesses = shown.filter { !it.confirmed }
+                if (shownConfirmed.isNotEmpty()) {
+                    item { SectionLabel("CONFIRMED IN YOUR GUIDE") }
+                    items(shownConfirmed, key = { "c" + it.channel.streamId }) { m ->
+                        MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, shownConfirmed) }
+                    }
+                }
+                if (shownGuesses.isNotEmpty()) {
+                    item { SectionLabel(if (shownConfirmed.isEmpty()) "POSSIBLE CHANNELS · NOT IN GUIDE" else "OTHER POSSIBLE CHANNELS") }
+                    items(shownGuesses, key = { "g" + it.channel.streamId }) { m ->
+                        MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, shownGuesses) }
+                    }
+                }
+                if (!finishing && shown.isEmpty()) {
+                    item {
+                        Text(
+                            when {
+                                list.isEmpty() -> "No channel in your guide mentions this game yet. Guides usually list games an hour or two before they start."
+                                filt == 3 -> "None of your pinned channels match. Hold OK on a channel to pin it."
+                                else -> "Nothing matches this filter."
+                            },
+                            color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 20.dp),
+                        )
+                    }
+                }
+                if (epgStatus == EpgIndex.Status.Failed) {
+                    item {
+                        Text("Couldn't download your provider's full guide, so these are name matches only.",
+                            color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
+                    }
+                }
+            } else {
+                when {
+                    hide -> item { Text("Scores are hidden. Turn off \"Hide scores\" in Sports to see stats.", color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 20.dp)) }
+                    game.state == "pre" -> item { Text("Stats show up once the game starts.", color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 20.dp)) }
+                    else -> {
+                        val pl = plays.valueOrNull().orEmpty()
+                        val bs = box.valueOrNull()
+                        if (pl.isNotEmpty()) item { CatchMeUpCard(game, pl) }
+                        if (bs != null) item { BoxScoreCard(game, bs) }
+                        if (pl.isEmpty() && bs == null) {
+                            item {
+                                if (box is Load.Loading || plays is Load.Loading) LoadView(box) {}
+                                else Text("No stats for this game yet.", color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 20.dp))
+                            }
+                        }
+                    }
                 }
             }
         }
