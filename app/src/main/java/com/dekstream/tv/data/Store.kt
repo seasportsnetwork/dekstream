@@ -33,11 +33,14 @@ data class Source(
     val loadShows: Boolean = true,
     /** Extra XMLTV guides, highest priority first; they fill channels/gaps the main guide lacks. */
     val extraEpg: List<String> = emptyList(),
+    /** Extra logins on the same Xtream server ("user:pass"), used for more Multiview tiles. */
+    val extraLogins: List<String> = emptyList(),
 ) {
     fun toJson() = JSONObject().apply {
         put("id", id); put("name", name); put("type", type.name); put("url", url)
         put("user", username); put("pass", password); put("epg", epgUrl); put("mac", mac)
         put("live", loadLive); put("movies", loadMovies); put("shows", loadShows); put("extraEpg", extraEpg.joinToString("\n"))
+        put("extraLogins", extraLogins.joinToString("\n"))
     }
 
     companion object {
@@ -54,6 +57,7 @@ data class Source(
             loadMovies = o.optBoolean("movies", true),
             loadShows = o.optBoolean("shows", true),
             extraEpg = o.optString("extraEpg").split('\n').map { it.trim() }.filter { it.startsWith("http") },
+            extraLogins = o.optString("extraLogins").split('\n').map { it.trim() }.filter { it.contains(':') },
         )
     }
 }

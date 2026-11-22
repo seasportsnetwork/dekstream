@@ -92,6 +92,11 @@ start --ei test_sync 2; sleep 6
 shot "$(printf %02d $n)-sync-receive"; n=$((n+1))
 key 4; sleep 2
 
+step "multiview (3 tiles, one-connection mode)"
+start --ez test_multiview true; sleep 20
+shot "$(printf %02d $n)-multiview"; n=$((n+1))
+key 4; sleep 2
+
 step "update prompt"
 start --es test_tab Settings --ez test_update true; sleep 6
 shot "$(printf %02d $n)-update-prompt"; n=$((n+1))

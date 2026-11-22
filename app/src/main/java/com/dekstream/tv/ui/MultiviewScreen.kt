@@ -1,5 +1,7 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.material.icons.filled.Scoreboard
+
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.BackHandler
@@ -80,6 +82,15 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstr
     var saving by remember { mutableStateOf(false) }
     val layouts by app.prefs.layouts.collectAsState()
     val all by rememberLoad(Unit) { repo.allChannels() }
+    // One-connection plans: HLS tiles, extra logins, and score cards for games that can't get a stream.
+    val ctx = LocalContext.current
+    val mvPrefs = remember { ctx.getSharedPreferences("multiview", android.content.Context.MODE_PRIVATE) }
+    var hlsTiles by remember { mutableStateOf(mvPrefs.getBoolean("hls_" + repo.source.id, true)) }
+    val limited = remember { mutableStateListOf(false, false, false, false) }
+    val scoreCard = remember { mutableStateListOf(false, false, false, false) }
+    val account by rememberLoad(Unit) { runCatching { repo.provider.verify() }.getOrNull() }
+    val maxConns = account.valueOrNull()?.maxConnections ?: 0
+    val logins = 1 + repo.source.extraLogins.size
 
     if (onExit != null) BackHandler { onExit() }
 
@@ -138,6 +149,11 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstr
                 Icon(Icons.Default.SwapHoriz, "Swap tiles", tint = if (swapFrom != null) DS.Accent else DS.TextDim)
             }
             IconButton(onClick = { saving = true }, modifier = Modifier.focusRing()) { Icon(Icons.Default.BookmarkAdd, "Save layout", tint = DS.TextDim) }
+            CategoryChip(if (hlsTiles) "One-connection mode: on" else "One-connection mode: off", hlsTiles) {
+                hlsTiles = !hlsTiles; mvPrefs.edit().putBoolean("hls_" + repo.source.id, hlsTiles).apply()
+                for (i in 0 until 4) limited[i] = false
+            }
+            HSpacer(6.dp)
             if (games.isNotEmpty()) {
                 CategoryChip(if (followAction) "Sound follows the action: on" else "Sound follows the action: off", followAction) { followAction = !followAction }
                 HSpacer(6.dp)
@@ -159,9 +175,14 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstr
 
         val tile: @Composable (Int, Modifier) -> Unit = { i, m ->
             Box(m.padding(3.dp)) {
-                MultiTile(
+                val game = games.getOrNull(i)
+                if (scoreCard[i] && game != null) {
+                    ScoreCardTile(game, swapping = swapFrom == i, onSelect = { tileClick(i) }, onVideo = { scoreCard[i] = false; limited[i] = false })
+                } else MultiTile(
                     channel = slots[i], hasAudio = audio == i, swapping = swapFrom == i,
-                    onSelect = { tileClick(i) }, onChange = { pickFor = i }, onClear = { slots[i] = null },
+                    onSelect = { tileClick(i) }, onChange = { pickFor = i }, onClear = { slots[i] = null; limited[i] = false },
+                    slot = i, hls = hlsTiles, limited = limited[i], onLimited = { limited[i] = true },
+                    canScore = game != null, onScore = { scoreCard[i] = true },
                 )
             }
         }
@@ -176,7 +197,12 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstr
                 Row(Modifier.weight(1f).fillMaxWidth()) { tile(2, Modifier.weight(1f).fillMaxSize()); tile(3, Modifier.weight(1f).fillMaxSize()) }
             }
         }
-        Text("Tap a tile to hear it · long-press to change channel · needs a plan that allows several connections",
+        Text("Tap a tile to hear it · long-press to change channel · " + when {
+                maxConns > 0 -> "your plan allows $maxConns stream${if (maxConns == 1) "" else "s"}" +
+                    (if (logins > 1) " per login · $logins logins" else "") +
+                    (if (maxConns * logins < 2) " — one-connection mode and score cards help here" else "")
+                else -> "more channels need more connections, or try one-connection mode"
+            },
             color = DS.TextDim, fontSize = 11.sp, modifier = Modifier.padding(6.dp))
     }
 
@@ -220,6 +246,12 @@ private fun MultiTile(
     onSelect: () -> Unit,
     onChange: () -> Unit,
     onClear: () -> Unit,
+    slot: Int = 0,
+    hls: Boolean = false,
+    limited: Boolean = false,
+    onLimited: () -> Unit = {},
+    canScore: Boolean = false,
+    onScore: () -> Unit = {},
 ) {
     val shape = RoundedCornerShape(10.dp)
     Box(
@@ -243,7 +275,14 @@ private fun MultiTile(
                 Text("Add channel", color = DS.TextDim, fontSize = 13.sp)
             }
         } else {
-            TilePlayer(channel, hasAudio)
+            if (!limited) TilePlayer(channel, hasAudio, slot, hls, onLimited)
+            else Column(Modifier.align(Alignment.Center).padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Couldn't start this stream", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                Text("Your plan probably allows fewer streams at once. Add another login in the playlist settings, " +
+                    "or turn on one-connection mode.", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
+                if (canScore) PillButton("Show live score here", onScore, Icons.Default.Scoreboard, primary = true)
+            }
             Row(
                 Modifier.align(Alignment.TopStart).fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -258,18 +297,37 @@ private fun MultiTile(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun TilePlayer(channel: Channel, hasAudio: Boolean) {
+private fun TilePlayer(channel: Channel, hasAudio: Boolean, slot: Int = 0, hls: Boolean = false, onLimited: () -> Unit = {}) {
     val context = LocalContext.current
     val repo = DekStreamApp.instance.repo ?: return
     val player = remember(channel.streamId) { buildPlayer(context, live = true, small = true) }
-    LaunchedEffect(channel.streamId) {
-        val url = runCatching { repo.provider.resolve(repo.liveRequest(channel).url) }.getOrDefault(repo.liveRequest(channel).url)
+    LaunchedEffect(channel.streamId, hls) {
+        val src = repo.source
+        var url = repo.liveRequest(channel).url
+        if (src.type == com.dekstream.tv.data.SourceType.XTREAM) {
+            // Tiles after the first use the playlist's extra logins, when there are any.
+            src.extraLogins.getOrNull(slot - 1)?.let { login ->
+                val (u, p) = login.split(':', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+                url = url.replace("/live/${src.username}/${src.password}/", "/live/$u/$p/")
+            }
+            // HLS fetches short segments instead of holding one long connection open.
+            if (hls) url = url.replace(Regex("\\.ts$"), ".m3u8")
+        }
+        // Stagger starts so the server doesn't see several brand-new connections at the same moment.
+        kotlinx.coroutines.delay(slot * 1_500L)
+        url = runCatching { repo.provider.resolve(url) }.getOrDefault(url)
         player.setMediaItem(MediaItem.fromUri(url))
         player.prepare()
         player.playWhenReady = true
     }
+    DisposableEffect(player) {
+        val l = object : androidx.media3.common.Player.Listener {
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { onLimited() }
+        }
+        player.addListener(l)
+        onDispose { player.removeListener(l); player.release() }
+    }
     LaunchedEffect(hasAudio) { player.volume = if (hasAudio) 1f else 0f }
-    DisposableEffect(player) { onDispose { player.release() } }
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
@@ -282,6 +340,37 @@ private fun TilePlayer(channel: Channel, hasAudio: Boolean) {
         update = { it.player = player },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+/** A live score card in place of a stream (for games your plan can't stream at the same time). */
+@Composable
+private fun ScoreCardTile(game: com.dekstream.tv.data.Game, swapping: Boolean, onSelect: () -> Unit, onVideo: () -> Unit) {
+    val app = DekStreamApp.instance
+    val hide by app.prefs.hideScores.collectAsState()
+    val g by androidx.compose.runtime.produceState(game, game.id) {
+        while (true) { value = runCatching { app.sports.refresh(value) }.getOrDefault(value); kotlinx.coroutines.delay(30_000) }
+    }
+    val shape = RoundedCornerShape(10.dp)
+    Box(
+        Modifier.fillMaxSize().focusRing(shape, 1.02f).clip(shape)
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(Color(0xFF101318), DS.Accent.copy(alpha = 0.45f))))
+            .then(if (swapping) Modifier.border(3.dp, Color(0xFFFFC107), shape) else Modifier)
+            .tvClickable(onClick = onSelect, onLongClick = onVideo),
+    ) {
+        Row(Modifier.align(Alignment.Center).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            listOf(g.away to Alignment.Start, g.home to Alignment.End).forEachIndexed { idx, (t, _) ->
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    coil.compose.AsyncImage(t.logo, null, modifier = Modifier.size(54.dp))
+                    Text(t.abbr, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    if (!hide && g.state != "pre") Text(t.score ?: "-", color = Color.White, fontSize = 34.sp, fontWeight = FontWeight.Black)
+                }
+                if (idx == 0) Text(if (g.isLive) g.detail else if (g.state == "pre") fmtTime(g.startMs) else "Final",
+                    color = if (g.isLive) Color(0xFFFF6B60) else Color.White.copy(alpha = 0.7f), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            }
+        }
+        Text("Live score · hold OK to try the stream again", color = Color.White.copy(alpha = 0.6f), fontSize = 11.sp,
+            modifier = Modifier.align(Alignment.BottomCenter).padding(8.dp))
+    }
 }
 
 /** Search-as-you-type channel picker (favorites first). */

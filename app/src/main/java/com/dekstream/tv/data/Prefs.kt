@@ -129,6 +129,10 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
 
     fun setHidden(id: Int, v: Boolean) { hiddenChannels = if (v) hiddenChannels + id else hiddenChannels - id; saveIntList("hiddenCh", hiddenChannels.toList()); bump() }
     fun setLocked(id: Int, v: Boolean) { lockedChannels = if (v) lockedChannels + id else lockedChannels - id; saveIntList("lockedCh", lockedChannels.toList()); bump() }
+    /** Your order for Live TV categories (keys like "l:12", "__fav__", "g:abc"); unlisted ones follow in the provider's order. */
+    var catOrder: List<String> = sp.getString("catOrder", "")!!.split('\u0001').filter { it.isNotEmpty() }; private set
+    fun setCatOrder(keys: List<String>) { catOrder = keys; sp.edit().putString("catOrder", keys.joinToString("\u0001")).apply(); bump() }
+
     fun setCatHidden(id: String, v: Boolean) { hiddenCats = if (v) hiddenCats + id else hiddenCats - id; saveStrSet("hiddenCat", hiddenCats); bump() }
     fun setCatLocked(id: String, v: Boolean) { lockedCats = if (v) lockedCats + id else lockedCats - id; saveStrSet("lockedCat", lockedCats); bump() }
     fun renameChannel(id: Int, name: String?) {

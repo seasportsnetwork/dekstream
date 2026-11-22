@@ -1,5 +1,13 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+
+import androidx.compose.material.icons.filled.VerticalAlignBottom
+
+import androidx.compose.material.icons.filled.VerticalAlignTop
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -121,13 +129,39 @@ fun ChannelOptionsDialog(c: Channel, onDismiss: () -> Unit) {
 
 /** Long-press a category: rename, hide, lock. [prefix] is "l:", "v:" or "s:". */
 @Composable
-fun CategoryOptionsDialog(cat: Category, prefix: String, onDismiss: () -> Unit) {
+fun CategoryOptionsDialog(cat: Category, prefix: String, onDismiss: () -> Unit, order: List<String>? = null) {
     val app = DekStreamApp.instance
     val session = app.session ?: return
     val prefs = session.prefs
     val key = prefix + cat.id
     var step by remember { mutableStateOf("menu") }
-    if (session.profile.kids || cat.id.startsWith("__")) { onDismiss(); return }
+    if (session.profile.kids) { onDismiss(); return }
+    // Moving a category: order holds every Live TV category key in its current order.
+    val myKey = if (cat.id.startsWith("__") || cat.id.startsWith("g:")) cat.id else prefix + cat.id
+    fun move(to: (Int, Int) -> Int) {
+        val list = order?.toMutableList() ?: return
+        val i = list.indexOf(myKey); if (i < 0) return
+        val j = to(i, list.size).coerceIn(0, list.size - 1)
+        list.removeAt(i); list.add(j, myKey)
+        prefs.setCatOrder(list); onDismiss()
+    }
+    @Composable fun moveItems() {
+        if (order == null) return
+        OptionItem(Icons.Default.VerticalAlignTop, "Move to top") { move { _, _ -> 0 } }
+        OptionItem(Icons.Default.KeyboardArrowUp, "Move up") { move { i, _ -> i - 1 } }
+        OptionItem(Icons.Default.KeyboardArrowDown, "Move down") { move { i, _ -> i + 1 } }
+        OptionItem(Icons.Default.VerticalAlignBottom, "Move to bottom") { move { _, n -> n - 1 } }
+    }
+    if (cat.id.startsWith("__")) {
+        if (order == null) { onDismiss(); return }
+        AlertDialog(
+            onDismissRequest = onDismiss, containerColor = Appearance.palette.surface,
+            title = { Text(cat.name, color = DS.Text) },
+            text = { Column { moveItems() } },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = DS.TextDim) } },
+        )
+        return
+    }
     if (cat.id.startsWith("g:")) { GroupEditDialog(cat.id.removePrefix("g:"), onDismiss); return }
     when (step) {
         "rename" -> TextInputDialog("Rename category", prefs.catNames[key] ?: cat.name, "Leave empty to use the original name", onDismiss = onDismiss) {
@@ -149,6 +183,7 @@ fun CategoryOptionsDialog(cat: Category, prefix: String, onDismiss: () -> Unit) 
                     OptionItem(if (key in prefs.lockedCats) Icons.Default.LockOpen else Icons.Default.Lock,
                         if (key in prefs.lockedCats) "Unlock" else "Lock with parent PIN") { step = "gate-lock" }
                     OptionItem(Icons.Default.VisibilityOff, "Hide category") { step = "gate-hide" }
+                    moveItems()
                 }
             },
             confirmButton = { TextButton(onClick = onDismiss) { Text("Close", color = DS.TextDim) } },

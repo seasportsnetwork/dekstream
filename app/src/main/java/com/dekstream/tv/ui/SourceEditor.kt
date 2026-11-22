@@ -85,6 +85,7 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
     var loadMovies by remember { mutableStateOf(existing?.loadMovies ?: true) }
     var loadShows by remember { mutableStateOf(existing?.loadShows ?: true) }
     var extraEpg by remember { mutableStateOf(existing?.extraEpg?.joinToString("\n") ?: "") }
+    var extraLogins by remember { mutableStateOf(existing?.extraLogins?.joinToString("\n") ?: "") }
     var fileLabel by remember { mutableStateOf(existing?.takeIf { it.type == SourceType.M3U_FILE }?.url?.substringAfterLast('/')) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -135,6 +136,7 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
         mac = if (type == SourceType.STALKER) mac.trim().uppercase() else "",
         loadLive = loadLive, loadMovies = loadMovies, loadShows = loadShows,
         extraEpg = extraEpg.split('\n', ',', ' ').map { it.trim() }.filter { it.startsWith("http") },
+        extraLogins = if (type == SourceType.XTREAM) extraLogins.split('\n').map { it.trim() }.filter { it.contains(':') } else emptyList(),
     )
 
     val canSave = when (type) {
@@ -225,6 +227,14 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
             )
             Text("Listed in priority order. They add guide data for channels the main guide misses and fill its gaps.",
                 color = DS.TextDim, fontSize = 12.sp)
+            if (type == SourceType.XTREAM) {
+                OutlinedTextField(
+                    extraLogins, { extraLogins = it }, label = { Text("Extra logins for Multiview (username:password, one per line)") },
+                    colors = fieldColors, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 3,
+                )
+                Text("If your plan allows one stream per login, each extra login on the same server gives Multiview one more tile.",
+                    color = DS.TextDim, fontSize = 12.sp)
+            }
 
             error?.let { Text(it, color = DS.Live, fontSize = 14.sp) }
 

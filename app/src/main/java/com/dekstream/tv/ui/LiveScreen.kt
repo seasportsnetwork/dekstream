@@ -67,10 +67,21 @@ fun rememberLiveCategories(): Load<List<Category>> {
     val allow = kidsAllowed("l:")
     val groups = remember(version) { if (allow == null) app.prefs.groups.map { Category("g:" + it.id, "▸ " + it.name) } else emptyList() }
     return when (val c = cats) {
-        is Load.Ok -> Load.Ok(listOf(Category(FAV_ID, "★ Favorites")) + groups + listOf(Category(ALL_ID, "All Channels")) +
-            c.value.filter { allow == null || it.id in allow })
+        is Load.Ok -> Load.Ok(orderCategories(listOf(Category(FAV_ID, "★ Favorites")) + groups + listOf(Category(ALL_ID, "All Channels")) +
+            c.value.filter { allow == null || it.id in allow }, app.prefs.catOrder))
         else -> c
     }
+}
+
+/** Order key for a Live TV category in the combined list. */
+fun liveCatKey(c: Category) = if (c.id.startsWith("__") || c.id.startsWith("g:")) c.id else "l:" + c.id
+
+/** Your saved order first, then everything else in its original order. */
+fun orderCategories(list: List<Category>, order: List<String>): List<Category> {
+    if (order.isEmpty()) return list
+    val pos = order.withIndex().associate { it.value to it.index }
+    val (known, rest) = list.partition { liveCatKey(it) in pos }
+    return known.sortedBy { pos[liveCatKey(it)] } + rest
 }
 
 fun filterChannels(all: List<Channel>, catId: String, favs: Set<Int>): List<Channel> {
@@ -114,7 +125,7 @@ fun LiveScreen(state: AppState) {
     // Video only starts when you press OK / tap; moving through the list just shows the info.
     var playing by remember { mutableStateOf<Channel?>(null) }
 
-    catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }) }
+    catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }, order = cats.valueOrNull()?.map(::liveCatKey)) }
     LoadView(cats) { catList ->
         val catId = selected ?: if (favs.isNotEmpty()) FAV_ID else catList.getOrNull(2)?.id ?: ALL_ID
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -147,7 +158,7 @@ fun LiveScreen(state: AppState) {
                         }
                     }
                     if (showPreview) {
-                        PreviewPane(previewing, playing?.takeIf { it.streamId == previewing?.streamId }, { playing = it }, all.valueOrNull().orEmpty().let { filterChannels(it, catId, favs) }, state,
+                        PreviewPane(previewing, playing, { playing = it }, all.valueOrNull().orEmpty().let { filterChannels(it, catId, favs) }, state,
                             Modifier.weight(1.1f).fillMaxHeight())
                     }
                 }
@@ -270,6 +281,17 @@ private fun PreviewPane(c: Channel?, playing: Channel?, onPlay: (Channel) -> Uni
                         Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(16.dp))
                         Text(" Press OK to preview", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
+                }
+            }
+            // Browsing other channels keeps this one playing; OK on another channel switches.
+            if (c != null && playing != null && playing.streamId != c.streamId) {
+                Row(
+                    Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xB3000000)).padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text("Playing ${playing.name}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1,
+                        modifier = Modifier.weight(1f))
+                    Text("OK on ${c.name.take(22)} to switch", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1)
                 }
             }
             if (c != null && playing != null) {

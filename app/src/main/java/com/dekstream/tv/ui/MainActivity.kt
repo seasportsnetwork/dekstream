@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
         }
         i?.getStringExtra("test_game")?.let { app.pendingTestGame = it }
         i?.getStringExtra("test_play")?.let { app.pendingTestPlay = it }
+        if (i?.getBooleanExtra("test_multiview", false) == true) app.pendingTestRoute = "multiview"
         i?.getIntExtra("test_sync", -1)?.takeIf { it >= 0 }?.let { DekStreamAppRef.syncMode = it; app.pendingTestRoute = "sync" }
         i?.getIntExtra("test_fav", 0)?.takeIf { it > 0 }?.let { app.pendingTestFav = it }
         i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
@@ -176,6 +177,10 @@ private fun SignedIn() {
     val testRoute = app.pendingTestRoute
     LaunchedEffect(testRoute) {
         if (testRoute == "sync") { state.stack.clear(); state.tab = Tab.Settings; state.push(Route.Sync) }
+        if (testRoute == "multiview") {
+            val chans = runCatching { app.repo?.allChannels() }.getOrNull().orEmpty().take(3)
+            state.push(Route.Multiview(chans, emptyList()))
+        }
         app.pendingTestRoute = null
     }
 
