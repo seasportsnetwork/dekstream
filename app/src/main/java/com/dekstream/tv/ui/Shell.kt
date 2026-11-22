@@ -236,8 +236,8 @@ fun visibleTabs(): List<Tab> {
     return Tab.entries.filter { t ->
         when (t) {
             Tab.Live, Tab.Guide, Tab.Multiview, Tab.Favorites -> src.loadLive
-            Tab.Movies -> src.loadMovies
-            Tab.Series -> src.loadShows
+            Tab.Movies -> src.loadMovies && com.dekstream.tv.data.Stremio.iptvVod(com.dekstream.tv.DekStreamApp.instance)
+            Tab.Series -> src.loadShows && com.dekstream.tv.data.Stremio.iptvVod(com.dekstream.tv.DekStreamApp.instance)
             Tab.Discover -> !session.profile.kids
             Tab.Settings -> true
             else -> true

@@ -74,7 +74,9 @@ private val genres = listOf("Action", "Comedy", "Sci-Fi", "Thriller", "Animation
 fun DiscoverScreen(state: AppState) {
     val app = DekStreamApp.instance
     val ctx = LocalContext.current
-    var section by rememberSaveable { mutableStateOf(0) } // 0 Home, 1 Movies, 2 Series, 3 My list
+    var section by rememberSaveable { mutableStateOf(0) } // 0 Home, 1 Movies, 2 Series, 3 My list, 4 Collections
+    val hasCollections = Stremio.collectionsUrl(ctx).isNotBlank()
+    LaunchedEffect(app.pendingTestSection) { app.pendingTestSection?.let { section = it; app.pendingTestSection = null } }
     val progress by app.prefs.progress.collectAsState()
     val year = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
 
@@ -103,6 +105,7 @@ fun DiscoverScreen(state: AppState) {
                         DRow("sn", "New in $year", new.await()), DRow("sr", "Top rated", best.await())) + g.map { it.await() }
                 }
                 3 -> listOf(DRow("ml", "My list", Stremio.watchlistItems(ctx)))
+                4 -> emptyList()
                 else -> {
                     val mov = async { Stremio.catalog("movie", "top") }
                     val ser = async { Stremio.catalog("series", "top") }
@@ -145,6 +148,7 @@ fun DiscoverScreen(state: AppState) {
     }
     val hero = heroItem ?: list.firstOrNull()?.items?.firstOrNull()
     fun open(m: MetaPreview) = state.push(Route.Title(m))
+    if (section == 4 && !hasCollections) section = 0
 
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF0A0A0C))) {
         val wide = maxWidth >= 720.dp
@@ -164,12 +168,17 @@ fun DiscoverScreen(state: AppState) {
             // Top bar: sections
             Row(Modifier.padding(start = 32.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Discover", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(end = 10.dp))
-                listOf("Home", "Movies", "Series", "My list").forEachIndexed { i, l -> Pill(l, section == i, onClick = { section = i; focusedItem = null }) }
+                (listOf("Home", "Movies", "Series", "My list") + if (hasCollections) listOf("Collections") else emptyList())
+                    .forEachIndexed { i, l -> Pill(l, section == i, onClick = { section = i; focusedItem = null }) }
             }
             // Hero info
             Box(Modifier.fillMaxWidth().height(heroH - 56.dp).padding(start = 32.dp, end = 32.dp)) {
-                hero?.let { HeroInfo(it, Modifier.align(Alignment.BottomStart).widthIn(max = 620.dp), onPlay = { open(it) }, onList = { Stremio.toggleWatchlist(ctx, it) }) }
+                hero?.let {
+                    if (it.type == "folder") FolderHero(it, Modifier.align(Alignment.BottomStart).widthIn(max = 620.dp))
+                    else HeroInfo(it, Modifier.align(Alignment.BottomStart).widthIn(max = 620.dp), onPlay = { open(it) }, onList = { Stremio.toggleWatchlist(ctx, it) })
+                }
             }
+            if (section == 4) { CollectionRows(state) { f -> focusedItem = f }; return@Column }
             // Rows
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
                 if (cont.isNotEmpty() && section != 3) {
@@ -297,3 +306,97 @@ private fun WideTile(title: String, note: String?, image: String?, progress: Flo
     }
 }
 
+
+
+/** Collections section: each group is a row of folder tiles with the collection's artwork. */
+@Composable
+private fun CollectionRows(state: AppState, onFocus: (MetaPreview) -> Unit) {
+    val ctx = LocalContext.current
+    val groups by rememberLoad(Stremio.collectionsUrl(ctx)) { com.dekstream.tv.data.Collections.groups(ctx) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
+        if (Stremio.tmdbKey(ctx).isBlank()) item {
+            Text("Most of this collection is built from TMDB. Add a free TMDB key in Settings → Addons & Discover to fill the folders.",
+                color = Color(0xFFFFC107), fontSize = 13.sp, modifier = Modifier.padding(start = 32.dp, top = 8.dp))
+        }
+        when (val g = groups) {
+            is Load.Loading -> item { LoadView(g) {} }
+            is Load.Err -> item { Text("Couldn't load the collection: ${g.message}", color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(32.dp)) }
+            is Load.Ok -> g.value.forEach { grp ->
+                item(key = "g" + grp.id + grp.title) {
+                    RowTitle(grp.title)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = 32.dp)) {
+                        items(grp.folders, key = { grp.id + it.id }) { f ->
+                            FolderTile(f, onFocus = {
+                                onFocus(MetaPreview(f.id, "folder", f.title, f.cover, f.backdrop ?: f.cover, f.logo, grp.title, null, null, emptyList(),
+                                    note = "${f.sources.size} list${if (f.sources.size == 1) "" else "s"}"))
+                            }) { state.push(Route.Folder(f)) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FolderTile(f: com.dekstream.tv.data.CFolder, onFocus: () -> Unit, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    val (w, ratio) = when (f.shape.uppercase()) { "LANDSCAPE", "WIDE" -> 260.dp to 16f / 9f; "SQUARE" -> 160.dp to 1f; else -> 140.dp to 2f / 3f }
+    Column(Modifier.width(w)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(ratio).focusRing(shape, 1.06f).onFocusGained(onFocus).clip(shape)
+            .background(Color(0xFF1C1C22)).tvClickable(onClick)) {
+            AsyncImage(f.cover ?: f.backdrop, f.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            if (f.cover == null && f.logo != null) AsyncImage(f.logo, f.title, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize().padding(20.dp))
+        }
+        if (!f.hideTitle) Text(f.title, color = Color.White.copy(alpha = 0.85f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp))
+    }
+}
+
+@Composable
+private fun FolderHero(m: MetaPreview, modifier: Modifier) {
+    Column(modifier.padding(bottom = 12.dp)) {
+        if (m.logo != null) AsyncImage(m.logo, m.name, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,
+            modifier = Modifier.height(90.dp).widthIn(max = 420.dp))
+        else Text(m.name, color = Color.White, fontSize = 38.sp, fontWeight = FontWeight.Black)
+        Text(listOfNotNull(m.description, m.note).joinToString(" · "), color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp, modifier = Modifier.padding(top = 10.dp))
+        Text("Press OK to open", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
+    }
+}
+
+/** A collection folder: its artwork on top, one row per list. */
+@Composable
+fun FolderScreen(f: com.dekstream.tv.data.CFolder, state: AppState) {
+    val ctx = LocalContext.current
+    Box(Modifier.fillMaxSize().background(Color(0xFF0A0A0C))) {
+        AsyncImage(f.backdrop ?: f.cover, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(420.dp))
+        Box(Modifier.fillMaxWidth().height(420.dp).background(Brush.verticalGradient(0.3f to Color(0x330A0A0C), 1f to Color(0xFF0A0A0C))))
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 40.dp, bottom = 40.dp)) {
+            item {
+                Box(Modifier.fillMaxWidth().height(220.dp).padding(horizontal = 32.dp)) {
+                    if (f.logo != null) AsyncImage(f.logo, f.title, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,
+                        modifier = Modifier.align(Alignment.BottomStart).height(110.dp).widthIn(max = 460.dp))
+                    else Text(f.title, color = Color.White, fontSize = 40.sp, fontWeight = FontWeight.Black, modifier = Modifier.align(Alignment.BottomStart))
+                }
+            }
+            f.sources.forEachIndexed { i, src ->
+                item(key = "s$i") {
+                    val list by rememberLoad(f.id + i) { com.dekstream.tv.data.Collections.items(ctx, src) }
+                    RowTitle(src.title)
+                    when (val l = list) {
+                        is Load.Ok -> {
+                            val items = l.value
+                            if (items == null) Text(com.dekstream.tv.data.Collections.unavailableReason(ctx, src), color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp,
+                                modifier = Modifier.padding(start = 32.dp))
+                            else if (items.isEmpty()) Text("Nothing here right now.", color = Color.White.copy(alpha = 0.55f), fontSize = 13.sp, modifier = Modifier.padding(start = 32.dp))
+                            else LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = 32.dp)) {
+                                items(items, key = { it.type + it.id }) { m -> PosterTile(m, 140.dp, onFocus = {}) { state.push(Route.Title(m)) } }
+                            }
+                        }
+                        else -> Box(Modifier.padding(start = 32.dp).height(60.dp)) { LoadView(l) {} }
+                    }
+                }
+            }
+        }
+    }
+}

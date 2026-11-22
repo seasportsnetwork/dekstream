@@ -110,6 +110,10 @@ start --es test_tab Discover; sleep 20
 shot "$(printf %02d $n)-discover"; n=$((n+1))
 key 20; sleep 1; key 20; sleep 3
 shot "$(printf %02d $n)-discover-rows"; n=$((n+1))
+start --es test_collections "https://imkaptain.github.io/nuvio-assets/nuvio-share-hub/collections/nuvio_mega_collection.json" --es test_tab Discover; sleep 20
+shot "$(printf %02d $n)-collections"; n=$((n+1))
+key 20; sleep 1; key 20; sleep 1; key 22; sleep 3
+shot "$(printf %02d $n)-collections-focus"; n=$((n+1))
 start --ez test_title true; sleep 12
 shot "$(printf %02d $n)-title"; n=$((n+1))
 key 4; sleep 2

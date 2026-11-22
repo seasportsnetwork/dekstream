@@ -61,7 +61,11 @@ fun TitleScreen(initial: MetaPreview, state: AppState) {
     val app = DekStreamApp.instance
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val detail by rememberLoad(initial.id) { if (initial.upcoming) null else Stremio.meta(initial.type, initial.id) }
+    // TMDB titles (collections) are looked up by IMDb id, which Cinemeta and your addons use.
+    val detail by rememberLoad(initial.id) {
+        val imdb = if (initial.id.startsWith("tmdb:")) com.dekstream.tv.data.Collections.imdbFor(ctx, initial) else if (initial.upcoming) null else initial.id
+        if (imdb == null) null else Stremio.meta(initial.type, imdb)
+    }
     val m = detail.valueOrNull()?.preview ?: initial
     val progress by app.prefs.progress.collectAsState()
     var listed by remember { mutableStateOf(Stremio.inWatchlist(ctx, initial)) }
@@ -96,7 +100,8 @@ fun TitleScreen(initial: MetaPreview, state: AppState) {
                         d.director?.let { Text("Director: $it", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp) }
                     }
                     Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        if (m.upcoming) Text(m.note ?: "Coming soon", color = Color(0xFF46D369), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        if (m.upcoming || m.id.startsWith("tmdb:")) Text(if (detail is Load.Loading) "Loading…" else m.note ?: "Not available yet",
+                            color = Color(0xFF46D369), fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         else if (m.type == "movie") {
                             val p = progress["st:movie:${m.id}"]
                             PillButton(if (p != null && p.fraction in 0.02f..0.95f) "Resume" else "Play", {
