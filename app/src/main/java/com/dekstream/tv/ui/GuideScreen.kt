@@ -76,7 +76,7 @@ fun GuideScreen(state: AppState) {
     val all by rememberLoad(version) { repo.allChannels() }
     var catMenu by remember { mutableStateOf<com.dekstream.tv.data.Category?>(null) }
     var chMenu by remember { mutableStateOf<Channel?>(null) }
-    catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }) }
+    catMenu?.let { c -> CategoryOptionsDialog(c, "l:", onDismiss = { catMenu = null }, order = null) }
     chMenu?.let { c -> ChannelOptionsDialog(c, onDismiss = { chMenu = null }) }
     val favs by app.prefs.favorites.collectAsState()
     var selected by rememberSaveable { mutableStateOf<String?>(null) }

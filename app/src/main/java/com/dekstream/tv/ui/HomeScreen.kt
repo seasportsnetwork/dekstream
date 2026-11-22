@@ -1,5 +1,7 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.runtime.saveable.rememberSaveable
+
 import kotlinx.coroutines.awaitAll
 
 import kotlinx.coroutines.async
@@ -238,7 +240,7 @@ fun HomeScreen(state: AppState) {
                     }
                 }
                 val side: @Composable (Modifier) -> Unit = { m ->
-                    ScoresPanel(scores, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m, more = otherGames.size - scores.size,
+                    ScoresPanel(otherGames, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
                         onGame = { g -> state.push(Route.GameDetail(g)) }, onAll = { state.tab = Tab.Sports })
                 }
                 if (wide) {
@@ -250,7 +252,7 @@ fun HomeScreen(state: AppState) {
                 } else {
                     Column(Modifier.fillMaxWidth().padding(horizontal = pad).padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         spotlight(Modifier.fillMaxWidth().height(240.dp))
-                        if (scores.isNotEmpty()) side(Modifier.fillMaxWidth().height(260.dp))
+                        if (otherGames.isNotEmpty()) side(Modifier.fillMaxWidth().height(300.dp))
                     }
                 }
             }
@@ -483,54 +485,80 @@ private fun WelcomeSpotlight(modifier: Modifier, onLive: () -> Unit, onSports: (
     }
 }
 
-/** Live and upcoming scores beside the spotlight. */
+/** Live and upcoming scores beside the spotlight, with league tabs. */
 @Composable
 private fun ScoresPanel(
     games: List<Game>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
-    modifier: Modifier, more: Int = 0, onGame: (Game) -> Unit, onAll: () -> Unit,
+    modifier: Modifier, onGame: (Game) -> Unit, onAll: () -> Unit,
 ) {
+    var league by rememberSaveable { mutableStateOf<String?>(null) }
+    val leagues = games.map { it.league }.distinctBy { it.key }
+    val shown = games.filter { league == null || it.league.key == league }
+    val visible = shown.take(6)
     BentoCard(modifier) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Scores", color = DS.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text("Scores", color = DS.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                LazyRow(Modifier.weight(1f).padding(start = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { MiniTab("All", league == null) { league = null } }
+                    items(leagues, key = { it.key }) { l -> MiniTab(l.short, league == l.key) { league = l.key } }
+                }
                 val shape = RoundedCornerShape(50)
-                Row(Modifier.focusRing(shape).clip(shape).tvClickable(onAll).padding(horizontal = 8.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (more > 0) "+$more more" else "All sports", color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                Row(Modifier.focusRing(shape).clip(shape).tvClickable(onAll).padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (shown.size > visible.size) "+${shown.size - visible.size}" else "All", color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = DS.Accent, modifier = Modifier.size(16.dp))
                 }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(10.dp))
             when {
-                games.isNotEmpty() -> games.forEach { g -> ScoreLine(g, hide, g.hasFavorite(favs)) { onGame(g) } }
-                loading -> Text("Loading scores…", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-                noLeagues -> Text("Choose the leagues you follow in Sports.", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
-                else -> Text("No more games today.", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp))
+                visible.isNotEmpty() -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    visible.chunked(2).forEach { pair ->
+                        Row(Modifier.weight(1f, fill = false).heightIn(max = 76.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            pair.forEach { g -> MiniScore(g, hide, g.hasFavorite(favs), Modifier.weight(1f)) { onGame(g) } }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+                loading -> Text("Loading scores…", color = DS.TextDim, fontSize = 13.sp)
+                noLeagues -> Text("Choose the leagues you follow in Sports.", color = DS.TextDim, fontSize = 13.sp)
+                else -> Text("No more games today.", color = DS.TextDim, fontSize = 13.sp)
             }
         }
     }
 }
 
 @Composable
-private fun ScoreLine(g: Game, hide: Boolean, mine: Boolean, onClick: () -> Unit) {
+private fun MiniTab(label: String, on: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Text(label, color = if (on) DS.OnInvert else DS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.focusRing(shape, 1.05f).clip(shape).background(if (on) DS.Invert else Color.Transparent)
+            .tvClickable(onClick).padding(horizontal = 10.dp, vertical = 4.dp))
+}
+
+/** Compact two-line score card. */
+@Composable
+private fun MiniScore(g: Game, hide: Boolean, mine: Boolean, modifier: Modifier, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
     Row(
-        Modifier.fillMaxWidth().padding(vertical = 2.dp).focusRing(shape, 1.02f).clip(shape).tvClickable(onClick).padding(horizontal = 8.dp, vertical = 7.dp),
+        modifier.focusRing(shape, 1.03f).clip(shape).background(if (DS.Light) Color(0xFFF2F2F5) else Color(0x12FFFFFF))
+            .tvClickable(onClick).padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             listOf(g.away, g.home).forEach { t ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     AsyncImage(t.logo, null, contentScale = ContentScale.Fit, modifier = Modifier.size(18.dp))
-                    Text("  " + t.abbr, color = DS.Text, fontSize = 13.sp, fontWeight = if (mine) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.weight(1f))
-                    if (g.state != "pre" && !hide) Text(t.score ?: "-", color = DS.Text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(" " + t.abbr, color = DS.Text, fontSize = 13.sp, fontWeight = if (mine) FontWeight.Bold else FontWeight.Medium, modifier = Modifier.width(52.dp), maxLines = 1)
+                    if (g.state != "pre" && !hide) Text(t.score ?: "-", color = DS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
-        Text(
-            when { g.isLive -> g.detail ?: "Live"; g.state == "pre" -> fmtTime(g.startMs); else -> "Final" },
-            color = if (g.isLive) DS.Live else DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 10.dp).widthIn(min = 56.dp), maxLines = 1,
-        )
+        Column(horizontalAlignment = Alignment.End) {
+            if (g.isLive) Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(DS.Live))
+            Text(when { g.isLive -> g.detail; g.state == "pre" -> fmtTime(g.startMs); else -> "Final" },
+                color = if (g.isLive) DS.Live else DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.widthIn(max = 70.dp))
+        }
     }
 }
 
