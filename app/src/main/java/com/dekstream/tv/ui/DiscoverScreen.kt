@@ -169,7 +169,7 @@ fun DiscoverScreen(state: AppState) {
             Row(Modifier.padding(start = 32.dp, top = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Discover", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Black, modifier = Modifier.padding(end = 10.dp))
                 (listOf("Home", "Movies", "Series", "My list") + if (hasCollections) listOf("Collections") else emptyList())
-                    .forEachIndexed { i, l -> Pill(l, section == i, onClick = { section = i; focusedItem = null }) }
+                    .forEachIndexed { i, l -> Pill(l, section == i, onClick = { section = i; focusedItem = null; heroItem = null }) }
             }
             // Hero info
             Box(Modifier.fillMaxWidth().height(heroH - 56.dp).padding(start = 32.dp, end = 32.dp)) {
@@ -313,6 +313,13 @@ private fun WideTile(title: String, note: String?, image: String?, progress: Flo
 private fun CollectionRows(state: AppState, onFocus: (MetaPreview) -> Unit) {
     val ctx = LocalContext.current
     val groups by rememberLoad(Stremio.collectionsUrl(ctx)) { com.dekstream.tv.data.Collections.groups(ctx) }
+    // Start the header on the first folder instead of whatever Home last showed.
+    LaunchedEffect(groups.valueOrNull()?.size) {
+        val grp = groups.valueOrNull()?.firstOrNull() ?: return@LaunchedEffect
+        val f = grp.folders.first()
+        onFocus(MetaPreview(f.id, "folder", f.title, f.cover, f.backdrop ?: f.cover, f.logo, grp.title, null, null, emptyList(),
+            note = "${f.sources.size} list${if (f.sources.size == 1) "" else "s"}"))
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         if (Stremio.tmdbKey(ctx).isBlank()) item {
             Text("Most of this collection is built from TMDB. Add a free TMDB key in Settings → Addons & Discover to fill the folders.",
