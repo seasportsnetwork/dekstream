@@ -42,7 +42,14 @@ key 22 22; sleep 1; key 20 20 20; sleep 4; shot "$(printf %02d $n)-live-focus"; 
 key 23; sleep 8; shot "$(printf %02d $n)-live-preview"; n=$((n+1))
 step "player: full screen with quality badge"
 key 23; sleep 10; key 23; sleep 1; shot "$(printf %02d $n)-player"; n=$((n+1))
-key 4; sleep 2; key 4; sleep 2
+sleep 6
+step "player: guide strip (down) and recent channels (left)"
+key 20; sleep 3; shot "$(printf %02d $n)-guide-strip"; n=$((n+1))
+key 4; sleep 1; key 21; sleep 2; shot "$(printf %02d $n)-recent"; n=$((n+1))
+key 4; sleep 1
+step "mini player (back)"
+key 4; sleep 6; shot "$(printf %02d $n)-mini"; n=$((n+1))
+key 4; sleep 2
 
 step "game detail (sources tab)"
 start --es test_game nba; sleep 15
@@ -58,6 +65,10 @@ step "light theme"
 start --es test_tab Home --ei test_palette 4; sleep 8
 shot "$(printf %02d $n)-home-light"; n=$((n+1))
 start --ei test_palette 0
+
+step "playback settings"
+start --es test_tab Settings; sleep 3
+adb shell am start -n $ACT --es test_route_name playback >/dev/null 2>&1; sleep 1
 
 step "favorites reorder"
 start --es test_tab Favorites; sleep 6

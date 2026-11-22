@@ -48,6 +48,7 @@ sealed interface Route {
     data object AppearanceSettings : Route
     data object HomeSettings : Route
     data object Sync : Route
+    data object PlaybackSettings : Route
     data object ChannelManager : Route
     /** Full-screen multiview pre-filled with channels (e.g. from Sports). */
     data class Multiview(val channels: List<Channel>, val games: List<Game> = emptyList()) : Route
@@ -73,6 +74,7 @@ class AppState {
     var lockedPending by mutableStateOf<Route.Player?>(null)
 
     fun play(req: PlayRequest, zapList: List<Channel> = emptyList()) {
+        com.dekstream.tv.DekStreamApp.instance.mini = null
         val prefs = com.dekstream.tv.DekStreamApp.instance.session?.prefs
         val ch = req.channel
         // Locked channels and zapping lists skip locked entries unless the PIN is given.

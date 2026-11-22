@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -77,6 +78,9 @@ fun SettingsScreen(state: AppState) {
         Card {
             NavRow(Icons.Default.Palette, "Appearance", "Accent, background, selection style, transparency, guide background") {
                 state.push(Route.AppearanceSettings)
+            }
+            NavRow(Icons.Default.Tune, "Playback & screen", "Frame rate, guide while watching, mini player, start-up, captions, burn-in protection") {
+                state.push(Route.PlaybackSettings)
             }
             NavRow(Icons.Default.Devices, "Sync with another device", "Copy playlists, profiles, favorites and settings between your Shield and tablet") {
                 state.push(Route.Sync)

@@ -1,5 +1,25 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.ui.unit.dp
+
+import androidx.compose.ui.unit.sp
+
+import androidx.compose.material3.Text
+
+import androidx.compose.foundation.layout.padding
+
+import androidx.compose.ui.Alignment
+
+import androidx.compose.ui.graphics.Color
+
+import androidx.compose.runtime.mutableIntStateOf
+
+import androidx.compose.runtime.mutableLongStateOf
+
+import androidx.compose.foundation.layout.offset
+
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+
 import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.Intent
@@ -255,7 +275,42 @@ private fun SignedIn() {
         }
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // Start-up choice (once per launch): Home, the Guide, or straight into the last channel.
+    LaunchedEffect(app.session?.key) {
+        if (app.startupHandled || app.session == null) return@LaunchedEffect
+        app.startupHandled = true
+        when (com.dekstream.tv.data.PlaybackPrefs.startOn) {
+            "guide" -> state.tab = Tab.Guide
+            "last" -> app.prefs.recentChannels.value.firstOrNull()?.let { app.pendingPlayStream = it }
+        }
+    }
+
+    // Burn-in protection: dim after 3 idle minutes (not while video plays) and nudge the layout a few pixels now and then.
+    val pp = com.dekstream.tv.data.PlaybackPrefs
+    var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var dimmed by remember { mutableStateOf(false) }
+    var shift by remember { mutableIntStateOf(0) }
+    val videoOn = top is Route.Player || top is Route.Multiview || app.mini != null
+    LaunchedEffect(lastInput, videoOn, pp.burnIn) {
+        dimmed = false
+        if (!pp.burnIn || videoOn) return@LaunchedEffect
+        kotlinx.coroutines.delay(3 * 60_000L); dimmed = true
+    }
+    LaunchedEffect(pp.burnIn) { while (pp.burnIn) { kotlinx.coroutines.delay(3 * 60_000L); shift = (shift + 1) % 4 } }
+    val offsets = listOf(0 to 0, 2 to 1, -1 to 2, 1 to -2)
+
+    // Back at the top level with the mini player showing: close it.
+    androidx.activity.compose.BackHandler(enabled = app.mini != null && state.stack.isEmpty()) { app.mini = null }
+
+    Box(
+        Modifier.fillMaxSize().onPreviewKeyEvent { ev ->
+            lastInput = System.currentTimeMillis()
+            if (dimmed) { dimmed = false; true } else false // the first key only wakes the screen
+        },
+    ) {
+    Box(Modifier.fillMaxSize().then(
+        if (pp.burnIn && !videoOn) Modifier.offset(offsets[shift].first.dp, offsets[shift].second.dp) else Modifier,
+    )) {
     when (top) {
         null -> Shell(state)
         is Route.Player -> PlayerScreen(top.request, top.zapList, onExit = { state.pop() })
@@ -269,10 +324,23 @@ private fun SignedIn() {
         Route.AppearanceSettings -> AppearanceScreen(state)
         Route.HomeSettings -> HomeLayoutScreen(state)
         Route.Sync -> SyncScreen(state)
+        Route.PlaybackSettings -> PlaybackSettingsScreen(state)
         Route.ChannelManager -> ChannelManagerScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
+    }
+    // Mini player: live TV keeps playing in a corner while you browse (Back from the player).
+    val mini = app.mini
+    if (mini != null && top !is Route.Player && top !is Route.Multiview) {
+        MiniPlayer(mini.first, Modifier.align(Alignment.BottomEnd).padding(24.dp),
+            onExpand = { app.mini = null; state.play(mini.first, mini.second) },
+            onClose = { app.mini = null })
+    }
     SportsAlertCard(state) { a -> alertScope.launch { watchAlert(state, a) } }
+    if (dimmed) Box(Modifier.fillMaxSize().background(Color(0xD9000000))) {
+        Text("Press any button", color = Color.White.copy(alpha = 0.35f), fontSize = 14.sp,
+            modifier = Modifier.align(listOf(Alignment.TopStart, Alignment.TopEnd, Alignment.BottomEnd, Alignment.BottomStart)[shift]).padding(40.dp))
+    }
     }
 }
 
