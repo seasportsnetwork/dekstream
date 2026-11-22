@@ -25,39 +25,39 @@ fun PlaybackSettingsScreen(state: AppState) {
 
         Option("Match frame rate", "The TV switches to the stream's frame rate (60 for sports, 24 for movies) for smoother motion. " +
             "The screen may go black for a second when the rate changes.") {
-            Choice("On", P.matchFrameRate) { P.setMatchFrameRate(true) }
-            Choice("Off", !P.matchFrameRate) { P.setMatchFrameRate(false) }
+            Choice("On", P.matchFrameRate) { P.changeMatchFrameRate(true) }
+            Choice("Off", !P.matchFrameRate) { P.changeMatchFrameRate(false) }
         }
         Option("Up and Down while watching", "Browse what's on other channels without leaving the one you're watching, or change channel straight away.") {
-            Choice("Browse the guide", P.upDown == "guide") { P.setUpDown("guide") }
-            Choice("Change channel", P.upDown == "zap") { P.setUpDown("zap") }
+            Choice("Browse the guide", P.upDown == "guide") { P.changeUpDown("guide") }
+            Choice("Change channel", P.upDown == "zap") { P.changeUpDown("zap") }
         }
         Option("Back while watching live TV", "Keep it playing in a corner while you browse, or stop it.") {
-            Choice("Mini player", P.backToMini) { P.setBackToMini(true) }
-            Choice("Stop", !P.backToMini) { P.setBackToMini(false) }
+            Choice("Mini player", P.backToMini) { P.changeBackToMini(true) }
+            Choice("Stop", !P.backToMini) { P.changeBackToMini(false) }
         }
         Option("Best version of a channel", "When a channel is listed more than once (HD, FHD, 4K…), play the copy that has worked best for you.") {
-            Choice("On", P.bestVersion) { P.setBestVersion(true) }
-            Choice("Off", !P.bestVersion) { P.setBestVersion(false) }
+            Choice("On", P.bestVersion) { P.changeBestVersion(true) }
+            Choice("Off", !P.bestVersion) { P.changeBestVersion(false) }
         }
         Option("When DekTV opens", null) {
-            Choice("Home", P.startOn == "home") { P.setStartOn("home") }
-            Choice("Guide", P.startOn == "guide") { P.setStartOn("guide") }
-            Choice("Last channel", P.startOn == "last") { P.setStartOn("last") }
+            Choice("Home", P.startOn == "home") { P.changeStartOn("home") }
+            Choice("Guide", P.startOn == "guide") { P.changeStartOn("guide") }
+            Choice("Last channel", P.startOn == "last") { P.changeStartOn("last") }
         }
         Option("Captions: size", null) {
-            listOf("Small", "Normal", "Large", "Extra large").forEachIndexed { i, l -> Choice(l, P.captionSize == i) { P.setCaptionSize(i) } }
+            listOf("Small", "Normal", "Large", "Extra large").forEachIndexed { i, l -> Choice(l, P.captionSize == i) { P.changeCaptionSize(i) } }
         }
         Option("Captions: background", null) {
-            listOf("None (outline)", "Shaded", "Solid black").forEachIndexed { i, l -> Choice(l, P.captionBg == i) { P.setCaptionBg(i) } }
+            listOf("None (outline)", "Shaded", "Solid black").forEachIndexed { i, l -> Choice(l, P.captionBg == i) { P.changeCaptionBg(i) } }
         }
         Option("Captions: position", null) {
-            Choice("Bottom", !P.captionHigh) { P.setCaptionHigh(false) }
-            Choice("Higher (above score bugs)", P.captionHigh) { P.setCaptionHigh(true) }
+            Choice("Bottom", !P.captionHigh) { P.changeCaptionHigh(false) }
+            Choice("Higher (above score bugs)", P.captionHigh) { P.changeCaptionHigh(true) }
         }
         Option("Burn-in protection", "For OLED TVs: menus dim after 3 idle minutes and the layout shifts a few pixels now and then. Never while video plays.") {
-            Choice("On", P.burnIn) { P.setBurnIn(true) }
-            Choice("Off", !P.burnIn) { P.setBurnIn(false) }
+            Choice("On", P.burnIn) { P.changeBurnIn(true) }
+            Choice("Off", !P.burnIn) { P.changeBurnIn(false) }
         }
     }
 }

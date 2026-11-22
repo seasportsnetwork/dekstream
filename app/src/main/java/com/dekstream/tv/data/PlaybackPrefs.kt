@@ -36,15 +36,15 @@ object PlaybackPrefs {
         backToMini = sp.getBoolean("mini", true)
     }
 
-    fun setMatchFrameRate(v: Boolean) { matchFrameRate = v; sp.edit().putBoolean("afr", v).apply() }
-    fun setUpDown(v: String) { upDown = v; sp.edit().putString("upDown", v).apply() }
-    fun setCaptionSize(v: Int) { captionSize = v; sp.edit().putInt("capSize", v).apply() }
-    fun setCaptionBg(v: Int) { captionBg = v; sp.edit().putInt("capBg", v).apply() }
-    fun setCaptionHigh(v: Boolean) { captionHigh = v; sp.edit().putBoolean("capHigh", v).apply() }
-    fun setStartOn(v: String) { startOn = v; sp.edit().putString("startOn", v).apply() }
-    fun setBestVersion(v: Boolean) { bestVersion = v; sp.edit().putBoolean("best", v).apply() }
-    fun setBurnIn(v: Boolean) { burnIn = v; sp.edit().putBoolean("burnIn", v).apply() }
-    fun setBackToMini(v: Boolean) { backToMini = v; sp.edit().putBoolean("mini", v).apply() }
+    fun changeMatchFrameRate(v: Boolean) { matchFrameRate = v; sp.edit().putBoolean("afr", v).apply() }
+    fun changeUpDown(v: String) { upDown = v; sp.edit().putString("upDown", v).apply() }
+    fun changeCaptionSize(v: Int) { captionSize = v; sp.edit().putInt("capSize", v).apply() }
+    fun changeCaptionBg(v: Int) { captionBg = v; sp.edit().putInt("capBg", v).apply() }
+    fun changeCaptionHigh(v: Boolean) { captionHigh = v; sp.edit().putBoolean("capHigh", v).apply() }
+    fun changeStartOn(v: String) { startOn = v; sp.edit().putString("startOn", v).apply() }
+    fun changeBestVersion(v: Boolean) { bestVersion = v; sp.edit().putBoolean("best", v).apply() }
+    fun changeBurnIn(v: Boolean) { burnIn = v; sp.edit().putBoolean("burnIn", v).apply() }
+    fun changeBackToMini(v: Boolean) { backToMini = v; sp.edit().putBoolean("mini", v).apply() }
 
     // ---- Best version of a channel: the copy that played best, per channel name ----
     fun best(group: String): Pair<Int, Int>? =
