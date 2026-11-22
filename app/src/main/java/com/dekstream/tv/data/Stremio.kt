@@ -50,7 +50,7 @@ data class StreamItem(val addon: String, val name: String, val title: String, va
 }
 
 /** An installed Stremio-style addon. */
-data class Addon(val url: String, val name: String, val resources: Set<String>, val types: Set<String>, val idPrefixes: List<String>)
+data class Addon(val url: String, val name: String, val resources: Set<String>, val types: Set<String>, val idPrefixes: List<String>, val id: String = "")
 
 /**
  * Discover: Stremio addons (your Usenet Ultimate for streams) plus free catalogs — Cinemeta for popular,
@@ -58,7 +58,8 @@ data class Addon(val url: String, val name: String, val resources: Set<String>, 
  */
 object Stremio {
     const val CINEMETA = "https://v3-cinemeta.strem.io"
-    const val DEFAULT_ADDON = "https://uu-infinidysk.dekflix.familyds.com/manifest.json"
+    /** Kaptain's official Nuvio mega collection (11 categories, 356 folders). */
+    const val KAPTAIN = "https://imkaptain.github.io/nuvio-assets/nuvio-share-hub/collections/nuvio_mega_collection.json"
 
     private val http: OkHttpClient by lazy { com.dekstream.tv.DekStreamApp.instance.http }
     private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
@@ -66,8 +67,14 @@ object Stremio {
     // ---------------- Settings ----------------
     private fun sp(c: Context) = c.getSharedPreferences("discover", Context.MODE_PRIVATE)
     fun addonUrls(c: Context): List<String> =
-        sp(c).getString("addons", null)?.split('\n')?.map { it.trim() }?.filter { it.startsWith("http") } ?: listOf(DEFAULT_ADDON)
+        sp(c).getString("addons", null)?.split('\n')?.map { it.trim() }?.filter { it.startsWith("http") } ?: emptyList()
     fun setAddonUrls(c: Context, urls: List<String>) { sp(c).edit().putString("addons", urls.joinToString("\n")).apply(); manifests.clear() }
+    /** Movies & series from your IPTV provider too (false = addons only: IPTV Movies/Series hidden everywhere). */
+    fun iptvVod(c: Context): Boolean = sp(c).getBoolean("iptvVod", true)
+    fun setIptvVod(c: Context, on: Boolean) { sp(c).edit().putBoolean("iptvVod", on).apply() }
+    fun collectionsUrl(c: Context): String = sp(c).getString("collections", "") ?: ""
+    fun setCollectionsUrl(c: Context, u: String) { sp(c).edit().putString("collections", u.trim()).apply() }
+
     fun tmdbKey(c: Context): String = sp(c).getString("tmdb", "") ?: ""
     fun setTmdbKey(c: Context, k: String) { sp(c).edit().putString("tmdb", k.trim()).apply() }
     fun watchlist(c: Context): List<String> = sp(c).getString("list", "")!!.split('\n').filter { it.contains('|') }
@@ -108,7 +115,7 @@ object Stremio {
                     m.optJSONArray("resources")?.let { a ->
                         for (i in 0 until a.length()) res += (a.optJSONObject(i)?.optString("name") ?: a.optString(i))
                     }
-                    Addon(u, m.optString("name", "Addon"), res, m.optJSONArray("types").strings().toSet(), m.optJSONArray("idPrefixes").strings())
+                    Addon(u, m.optString("name", "Addon"), res, m.optJSONArray("types").strings().toSet(), m.optJSONArray("idPrefixes").strings(), m.optString("id"))
                         .also { manifests[u] = it }
                 }.getOrNull()
             }
@@ -131,6 +138,14 @@ object Stremio {
                 }.getOrDefault(emptyList())
             }
         }.awaitAll().flatten()
+    }
+
+    /** A catalog from one of your installed addons, found by its manifest id (e.g. "aio-metadata"). */
+    suspend fun addonCatalog(c: Context, addonId: String, type: String, catalogId: String, genre: String?): List<MetaPreview>? {
+        val a = addons(c).firstOrNull { it.id == addonId } ?: return null
+        val g = genre?.takeIf { it.isNotBlank() && it != "None" }?.let { "/genre=${enc(it)}" } ?: ""
+        val arr = runCatching { getJson("${base(a.url)}/catalog/$type/${enc(catalogId)}$g.json").optJSONArray("metas") }.getOrNull() ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parsePreview(arr.optJSONObject(it), type) }
     }
 
     // ---------------- Cinemeta catalogs ----------------

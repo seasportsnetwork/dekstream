@@ -53,6 +53,7 @@ sealed interface Route {
     data object PlaybackSettings : Route
     data object Addons : Route
     data class Title(val meta: com.dekstream.tv.data.MetaPreview) : Route
+    data class Folder(val folder: com.dekstream.tv.data.CFolder) : Route
     data object ChannelManager : Route
     /** Full-screen multiview pre-filled with channels (e.g. from Sports). */
     data class Multiview(val channels: List<Channel>, val games: List<Game> = emptyList()) : Route

@@ -51,6 +51,7 @@ class DekStreamApp : Application() {
     var pendingTestGame by mutableStateOf<String?>(null)
     var pendingTestFav by mutableStateOf<Int?>(null)
     var pendingTestRoute by mutableStateOf<String?>(null)
+    var pendingTestSection by mutableStateOf<Int?>(null)
     private val memSamples = ArrayList<String>()
     var pendingTestPlay by mutableStateOf<String?>(null)
     /** Live TV shrunk to a corner while browsing: what's playing and its channel list. */

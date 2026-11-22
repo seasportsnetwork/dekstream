@@ -55,12 +55,13 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
         if (!source.loadLive) emptyList() else lock.withLock {
             cached("live_cats", { liveCats }, { liveCats = it }, { disk.loadCategories("live_cats") }, { disk.saveCategories("live_cats", it) }) { provider.liveCategories() }
         }
+    private val iptvVod get() = Stremio.iptvVod(com.dekstream.tv.DekStreamApp.instance)
     suspend fun rawVodCategories(): List<Category> =
-        if (!source.loadMovies) emptyList() else lock.withLock {
+        if (!source.loadMovies || !iptvVod) emptyList() else lock.withLock {
             cached("vod_cats", { vodCats }, { vodCats = it }, { disk.loadCategories("vod_cats") }, { disk.saveCategories("vod_cats", it) }) { provider.vodCategories() }
         }
     suspend fun rawSeriesCategories(): List<Category> =
-        if (!source.loadShows) emptyList() else lock.withLock {
+        if (!source.loadShows || !iptvVod) emptyList() else lock.withLock {
             cached("series_cats", { seriesCats }, { seriesCats = it }, { disk.loadCategories("series_cats") }, { disk.saveCategories("series_cats", it) }) { provider.seriesCategories() }
         }
     suspend fun rawChannels(): List<Channel> =

@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
         i?.getStringExtra("test_play")?.let { app.pendingTestPlay = it }
         if (i?.getBooleanExtra("test_multiview", false) == true) app.pendingTestRoute = "multiview"
         if (i?.getBooleanExtra("test_title", false) == true) app.pendingTestRoute = "title"
+        i?.getStringExtra("test_collections")?.let { com.dekstream.tv.data.Stremio.setCollectionsUrl(app, it); app.pendingTestSection = 4 }
         i?.getIntExtra("test_sync", -1)?.takeIf { it >= 0 }?.let { DekStreamAppRef.syncMode = it; app.pendingTestRoute = "sync" }
         i?.getIntExtra("test_fav", 0)?.takeIf { it > 0 }?.let { app.pendingTestFav = it }
         i?.getStringExtra("test_tab")?.let { t -> runCatching { Tab.valueOf(t) }.getOrNull()?.let { app.pendingTab = it } }
@@ -331,6 +332,7 @@ private fun SignedIn() {
         Route.PlaybackSettings -> PlaybackSettingsScreen(state)
         Route.Addons -> AddonsScreen(state)
         is Route.Title -> TitleScreen(top.meta, state)
+        is Route.Folder -> FolderScreen(top.folder, state)
         Route.ChannelManager -> ChannelManagerScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
