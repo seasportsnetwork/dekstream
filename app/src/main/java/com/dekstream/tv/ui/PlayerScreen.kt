@@ -1,5 +1,7 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.foundation.border
+
 import androidx.compose.runtime.collectAsState
 
 import android.app.Activity
@@ -173,6 +175,11 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     var controls by remember { mutableStateOf(true) }
     var touch by remember { mutableIntStateOf(0) }         // bump to keep controls up
     var showChannels by remember { mutableStateOf(false) }
+    /** Guide strip over the video: index into zapList being browsed (null = closed). */
+    var browseIdx by remember { mutableStateOf<Int?>(null) }
+    var showRecent by remember { mutableStateOf(false) }
+    val allChannels by produceState(emptyList<Channel>()) { value = runCatching { repo?.allChannels() }.getOrNull().orEmpty() }
+    val recentIds by app.prefs.recentChannels.collectAsState()
     var showOptions by remember { mutableStateOf(false) }
     var digits by remember { mutableStateOf("") }
     var resizeIdx by remember { mutableIntStateOf(app.channelMemory.resize(request.channel?.streamId)) }
@@ -271,6 +278,20 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
 
     // Load whenever the item changes (zapping, start over, back to live).
     LaunchedEffect(current.url) {
+        // Best version: a better-working copy of this channel was played before, so use it.
+        val ch0 = current.channel
+        if (ch0 != null && current.isLive && com.dekstream.tv.data.PlaybackPrefs.bestVersion && ch0.streamId !in tried) {
+            val best = com.dekstream.tv.data.PlaybackPrefs.best(com.dekstream.tv.data.StreamHealth.baseName(ch0.name))
+            if (best != null && best.first != ch0.streamId) {
+                val alt = runCatching { repo?.allChannels() }.getOrNull()?.firstOrNull { it.streamId == best.first }
+                if (alt != null && app.session?.prefs?.isChannelLocked(alt) != true && repo != null) {
+                    tried += ch0.streamId
+                    notice = "Playing ${alt.name} · the version of this channel that works best"
+                    current = repo.liveRequest(alt)
+                    return@LaunchedEffect
+                }
+            }
+        }
         error = null
         quality = emptyList()
         errorsHere = 0; started = false; loadStartedAt = System.currentTimeMillis()
@@ -287,6 +308,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         val r = repo ?: return
         if (!current.isLive) return
         app.health.recordFailure(ch.streamId)
+        com.dekstream.tv.data.PlaybackPrefs.forgetBest(com.dekstream.tv.data.StreamHealth.baseName(ch.name), ch.streamId)
         tried += ch.streamId
         scope.launch {
             val next = runCatching { r.alternatesFor(ch, app.health) }.getOrDefault(emptyList())
@@ -306,6 +328,14 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     }
     LaunchedEffect(current.url) {
         if (current.isLive) { delay(15_000); if (!started) failover("wouldn't start") }
+    }
+    // Played smoothly for 90 s: remember this copy (and its resolution) as a good version of the channel.
+    LaunchedEffect(current.url, started) {
+        val ch = current.channel ?: return@LaunchedEffect
+        if (!current.isLive || !started) return@LaunchedEffect
+        delay(90_000)
+        val hgt = player.videoFormat?.let { minOf(it.width, it.height) } ?: 0
+        if (!buffering && error == null && hgt > 0) com.dekstream.tv.data.PlaybackPrefs.recordGood(com.dekstream.tv.data.StreamHealth.baseName(ch.name), ch.streamId, hgt)
     }
     LaunchedEffect(notice) { if (notice != null) { delay(6_000); notice = null } }
 
@@ -356,7 +386,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().clearOverridesOfType(androidx.media3.common.C.TRACK_TYPE_AUDIO).build()
         tried.clear()
         current = r.liveRequest(c)
-        showChannels = false
+        showChannels = false; showRecent = false; browseIdx = null
     }
 
     fun zap(delta: Int) {
@@ -393,13 +423,24 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     fun backToLive() { current.channel?.let { switchTo(it) } }
 
     fun showControls() { controls = true; touch++ }
+    LaunchedEffect(browseIdx) { if (browseIdx != null) { delay(8_000); browseIdx = null } }
+    // Frame rate matching: ask the TV for a refresh rate that fits the stream (60 for sports, 24 for movies).
+    val fps = player.videoFormat?.frameRate?.takeIf { quality.isNotEmpty() } ?: -1f
+    LaunchedEffect(fps, com.dekstream.tv.data.PlaybackPrefs.matchFrameRate, pip) {
+        val act = activity ?: return@LaunchedEffect
+        if (com.dekstream.tv.data.PlaybackPrefs.matchFrameRate && fps > 0 && !pip) matchFrameRate(act, fps) else resetFrameRate(act)
+    }
+    DisposableEffect(Unit) { onDispose { activity?.let { resetFrameRate(it) } } }
 
     BackHandler {
         when {
             app.alert != null -> app.alert = null
             showOptions -> showOptions = false
             showChannels -> showChannels = false
+            showRecent -> showRecent = false
+            browseIdx != null -> browseIdx = null
             controls && !pip -> controls = false
+            current.isLive && com.dekstream.tv.data.PlaybackPrefs.backToMini && !pip -> { app.mini = current to zapList; onExit() }
             else -> onExit()
         }
     }
@@ -443,15 +484,41 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                     (k.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || k.keyCode == KeyEvent.KEYCODE_ENTER)) {
                     app.alertWatchRequested = true; return@onPreviewKeyEvent true
                 }
-                if (controls || showOptions || showChannels) return@onPreviewKeyEvent false
+                // Guide strip open: up/down browse, OK switches, left/right close.
+                browseIdx?.let { bi ->
+                    when (k.keyCode) {
+                        KeyEvent.KEYCODE_DPAD_UP -> { browseIdx = (bi - 1 + zapList.size) % zapList.size; return@onPreviewKeyEvent true }
+                        KeyEvent.KEYCODE_DPAD_DOWN -> { browseIdx = (bi + 1) % zapList.size; return@onPreviewKeyEvent true }
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { zapList.getOrNull(bi)?.let { switchTo(it) }; browseIdx = null; return@onPreviewKeyEvent true }
+                        KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> { browseIdx = null; return@onPreviewKeyEvent true }
+                    }
+                }
+                if (controls || showOptions || showChannels || showRecent) return@onPreviewKeyEvent false
                 // Controls hidden: remote shortcuts.
                 when (k.keyCode) {
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                         if (k.repeatCount > 0) showOptions = true else showControls(); true
                     }
-                    KeyEvent.KEYCODE_DPAD_UP -> { if (current.isLive) zap(-1) else showControls(); true }
-                    KeyEvent.KEYCODE_DPAD_DOWN -> { if (current.isLive) zap(1) else showControls(); true }
-                    KeyEvent.KEYCODE_DPAD_LEFT -> { if (current.isLive && zapList.size > 1) showChannels = true else player.seekBack(); true }
+                    KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        val dir = if (k.keyCode == KeyEvent.KEYCODE_DPAD_UP) -1 else 1
+                        when {
+                            !current.isLive -> showControls()
+                            com.dekstream.tv.data.PlaybackPrefs.upDown == "guide" && zapList.size > 1 -> {
+                                val cur = zapList.indexOfFirst { it.streamId == current.channel?.streamId }.coerceAtLeast(0)
+                                browseIdx = (cur + dir + zapList.size) % zapList.size
+                            }
+                            else -> zap(dir)
+                        }
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> {
+                        when {
+                            !current.isLive -> player.seekBack()
+                            recentIds.size >= 2 -> showRecent = true
+                            zapList.size > 1 -> showChannels = true
+                        }
+                        true
+                    }
                     KeyEvent.KEYCODE_DPAD_RIGHT -> { if (current.isLive) showControls() else player.seekForward(); true }
                     else -> false
                 }
@@ -470,7 +537,10 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                     playerView = this
                 }
             },
-            update = { it.resizeMode = if (pip) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeModes[resizeIdx].first },
+            update = {
+                it.resizeMode = if (pip) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeModes[resizeIdx].first
+                applyCaptionStyle(it)
+            },
             modifier = Modifier.fillMaxSize(),
         )
 
@@ -619,6 +689,15 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
             ChannelPanel(zapList, current.channel?.streamId, onPick = { switchTo(it) })
         }
 
+        AnimatedVisibility(
+            showRecent, enter = slideInHorizontally { -it } + fadeIn(), exit = slideOutHorizontally { -it } + fadeOut(),
+            modifier = Modifier.align(Alignment.CenterStart),
+        ) {
+            val byId = remember(allChannels) { allChannels.associateBy { it.streamId } }
+            ChannelPanel(recentIds.mapNotNull { byId[it] }.take(10), current.channel?.streamId, title = "Recent channels") { switchTo(it) }
+        }
+        browseIdx?.let { bi -> zapList.getOrNull(bi)?.let { c -> GuideStrip(c, zapList, bi, Modifier.align(Alignment.BottomCenter)) } }
+
         if (showOptions) {
             PlayerOptionsDialog(
                 player = player,
@@ -713,7 +792,7 @@ private fun SeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit, onSt
 }
 
 @Composable
-private fun ChannelPanel(channels: List<Channel>, currentId: Int?, onPick: (Channel) -> Unit) {
+private fun ChannelPanel(channels: List<Channel>, currentId: Int?, title: String = "Channels", onPick: (Channel) -> Unit) {
     val repo = DekStreamApp.instance.repo
     val startIdx = channels.indexOfFirst { it.streamId == currentId }.coerceAtLeast(0)
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = (startIdx - 3).coerceAtLeast(0))
@@ -724,7 +803,7 @@ private fun ChannelPanel(channels: List<Channel>, currentId: Int?, onPick: (Chan
             .background(Brush.horizontalGradient(listOf(Color(0xF20B0D12), Color(0xD90B0D12))))
             .padding(vertical = 18.dp),
     ) {
-        Text("Channels", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+        Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         LazyColumn(state = listState) {
             itemsIndexed(channels, key = { _, c -> c.streamId }) { i, c ->
                 val now by produceState<Program?>(null, c.streamId) { value = repo?.nowNext(c)?.firstOrNull { it.isLive() } }
@@ -819,6 +898,118 @@ private fun ScoreTicker(modifier: Modifier) {
                     color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 Text("  ${g.detail}", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1)
             }
+        }
+    }
+}
+
+
+/** Bottom strip while browsing channels over the video: what's on now and next. OK switches. */
+@Composable
+private fun GuideStrip(c: Channel, list: List<Channel>, idx: Int, modifier: Modifier) {
+    val repo = DekStreamApp.instance.repo
+    val epg by produceState(emptyList<Program>(), c.streamId) { value = runCatching { repo?.nowNext(c) }.getOrNull().orEmpty() }
+    val now = epg.firstOrNull { it.isLive() }
+    val next = epg.firstOrNull { it.startMs > System.currentTimeMillis() }
+    val prevC = list.getOrNull((idx - 1 + list.size) % list.size)
+    val nextC = list.getOrNull((idx + 1) % list.size)
+    Column(
+        modifier.fillMaxWidth().background(Brush.verticalGradient(listOf(Color.Transparent, Color(0xE6000000), Color(0xF2000000))))
+            .padding(start = 48.dp, end = 48.dp, top = 40.dp, bottom = 28.dp),
+    ) {
+        prevC?.let { Text("▲  ${it.name}", color = Color.White.copy(alpha = 0.45f), fontSize = 13.sp, maxLines = 1) }
+        Row(Modifier.padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            ChannelLogo(c.icon, 64.dp)
+            Column(Modifier.padding(start = 18.dp).weight(1f)) {
+                Text((if (c.num > 0) "${c.num}  " else "") + c.name, color = Color.White.copy(alpha = 0.75f), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(now?.title ?: "No guide information", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (now != null) {
+                    val f = ((System.currentTimeMillis() - now.startMs).toFloat() / (now.endMs - now.startMs)).coerceIn(0f, 1f)
+                    Row(Modifier.padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.width(220.dp).height(4.dp).clip(RoundedCornerShape(2.dp)).background(Color(0x40FFFFFF))) {
+                            Box(Modifier.fillMaxWidth(f).height(4.dp).background(DS.Accent))
+                        }
+                        Text("  ${minutesLeft(now)} left", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                    }
+                }
+                next?.let { Text("Next · ${fmtTime(it.startMs)}  ${it.title}", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp, maxLines = 1,
+                    modifier = Modifier.padding(top = 4.dp)) }
+            }
+            Text("OK to watch", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.clip(RoundedCornerShape(50)).background(Color(0x33FFFFFF)).padding(horizontal = 14.dp, vertical = 7.dp))
+        }
+        nextC?.let { Text("▼  ${it.name}", color = Color.White.copy(alpha = 0.45f), fontSize = 13.sp, maxLines = 1) }
+    }
+}
+
+/** Caption size, background and position from Settings > Playback & screen. */
+@androidx.annotation.OptIn(markerClass = [UnstableApi::class])
+private fun applyCaptionStyle(v: PlayerView) {
+    val sv = v.subtitleView ?: return
+    val pp = com.dekstream.tv.data.PlaybackPrefs
+    val bg = when (pp.captionBg) { 0 -> android.graphics.Color.TRANSPARENT; 2 -> android.graphics.Color.BLACK; else -> 0x99000000.toInt() }
+    sv.setStyle(androidx.media3.ui.CaptionStyleCompat(
+        android.graphics.Color.WHITE, bg, android.graphics.Color.TRANSPARENT,
+        if (pp.captionBg == 0) androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW else androidx.media3.ui.CaptionStyleCompat.EDGE_TYPE_NONE,
+        android.graphics.Color.BLACK, null,
+    ))
+    sv.setFractionalTextSize(androidx.media3.ui.SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * listOf(0.8f, 1f, 1.3f, 1.6f)[pp.captionSize.coerceIn(0, 3)])
+    sv.setBottomPaddingFraction(if (pp.captionHigh) 0.2f else androidx.media3.ui.SubtitleView.DEFAULT_BOTTOM_PADDING_FRACTION)
+}
+
+/** Pick the display mode at the current resolution whose refresh rate fits the video best. */
+private fun matchFrameRate(act: android.app.Activity, fps: Float) {
+    runCatching {
+        val display = act.window.decorView.display ?: return
+        val cur = display.mode
+        val modes = display.supportedModes.filter { it.physicalWidth == cur.physicalWidth && it.physicalHeight == cur.physicalHeight }
+        fun fit(rate: Float): Float { val r = rate / fps; val n = kotlin.math.round(r); return if (n < 1f) 99f else kotlin.math.abs(r - n) + (n - 1) * 0.01f }
+        val best = modes.minByOrNull { fit(it.refreshRate) } ?: return
+        if (fit(best.refreshRate) > 0.02f) return
+        val lp = act.window.attributes
+        if (lp.preferredDisplayModeId != best.modeId) { lp.preferredDisplayModeId = best.modeId; act.window.attributes = lp }
+    }
+}
+
+private fun resetFrameRate(act: android.app.Activity) {
+    runCatching {
+        val lp = act.window.attributes
+        if (lp.preferredDisplayModeId != 0) { lp.preferredDisplayModeId = 0; act.window.attributes = lp }
+    }
+}
+
+
+/** Live TV in a corner while browsing. OK = full screen again, hold OK = close. */
+@OptIn(UnstableApi::class)
+@Composable
+fun MiniPlayer(req: PlayRequest, modifier: Modifier, onExpand: () -> Unit, onClose: () -> Unit) {
+    val context = LocalContext.current
+    val repo = DekStreamApp.instance.repo
+    val player = remember(req.url) { buildPlayer(context, live = true, small = true) }
+    LaunchedEffect(req.url) {
+        val url = runCatching { repo?.provider?.resolve(req.url) ?: req.url }.getOrDefault(req.url)
+        player.setMediaItem(MediaItem.fromUri(url)); player.prepare(); player.playWhenReady = true
+    }
+    DisposableEffect(player) { onDispose { player.release() } }
+    val shape = RoundedCornerShape(14.dp)
+    Box(
+        modifier.width(400.dp).height(225.dp).focusRing(shape, 1.04f).clip(shape).background(Color.Black)
+            .border(1.dp, Color(0x33FFFFFF), shape).tvClickable(onClick = onExpand, onLongClick = onClose),
+    ) {
+        AndroidView(
+            factory = { ctx -> PlayerView(ctx).apply {
+                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+                useController = false; isFocusable = false; keepScreenOn = true
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+            } },
+            update = { it.player = player },
+            modifier = Modifier.fillMaxSize(),
+        )
+        Row(
+            Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xB3000000)).padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(req.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
+            Text("OK full screen · hold to close", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
         }
     }
 }

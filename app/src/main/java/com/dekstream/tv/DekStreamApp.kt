@@ -53,6 +53,9 @@ class DekStreamApp : Application() {
     var pendingTestRoute by mutableStateOf<String?>(null)
     private val memSamples = ArrayList<String>()
     var pendingTestPlay by mutableStateOf<String?>(null)
+    /** Live TV shrunk to a corner while browsing: what's playing and its channel list. */
+    var mini by mutableStateOf<Pair<com.dekstream.tv.data.PlayRequest, List<com.dekstream.tv.data.Channel>>?>(null)
+    var startupHandled = false
     /** The search/mic key was pressed: Search opens listening. */
     var voiceSearchRequested by mutableStateOf(false)
     /** Game to watch from a notification: league key, game id, start time. */
@@ -85,6 +88,7 @@ class DekStreamApp : Application() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        com.dekstream.tv.data.PlaybackPrefs.load(this)
         // Keep the last crash so it can be shown in Settings > About (and sent to us).
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         // Memory samples every 30 s (last 20) so a crash report shows whether memory crept up or spiked.
