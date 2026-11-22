@@ -149,11 +149,12 @@ fun DiscoverScreen(state: AppState) {
     BoxWithConstraints(Modifier.fillMaxSize().background(Color(0xFF0A0A0C))) {
         val wide = maxWidth >= 720.dp
         val heroH = if (wide) maxHeight * 0.48f else 260.dp
+        val imgStart = maxWidth * 0.3f
         // Backdrop
         Crossfade(hero?.background ?: hero?.poster, label = "backdrop") { img ->
             Box(Modifier.fillMaxWidth().height(heroH + 120.dp)) {
                 if (img != null) AsyncImage(img, null, contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().then(if (wide) Modifier.padding(start = maxWidth * 0.3f) else Modifier))
+                    modifier = Modifier.fillMaxSize().then(if (wide) Modifier.padding(start = imgStart) else Modifier))
                 Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(
                     if (wide) listOf(Color(0xFF0A0A0C), Color(0xFF0A0A0C), Color(0xCC0A0A0C), Color.Transparent) else listOf(Color(0x990A0A0C), Color(0x660A0A0C)))))
                 Box(Modifier.fillMaxSize().background(Brush.verticalGradient(0.55f to Color.Transparent, 1f to Color(0xFF0A0A0C))))
