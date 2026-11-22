@@ -1,0 +1,247 @@
+package com.dekstream.tv.data
+
+import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
+import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+
+/** A title in a catalog row. */
+data class MetaPreview(
+    val id: String, val type: String, val name: String,
+    val poster: String?, val background: String?, val logo: String?,
+    val description: String?, val year: String?, val rating: String?, val genres: List<String>,
+    /** Extra line for rows like "New episodes" ("S2 E5 · Today"). */
+    val note: String? = null,
+    /** Not out yet (Coming soon): no streams to look up. */
+    val upcoming: Boolean = false,
+)
+
+data class Episode2(val id: String, val season: Int, val episode: Int, val title: String, val released: Long?, val thumbnail: String?, val overview: String?)
+
+data class MetaDetail(
+    val preview: MetaPreview, val runtime: String?, val cast: List<String>, val director: String?,
+    val episodes: List<Episode2>, val trailer: String?,
+)
+
+/** A playable source an addon offered. */
+data class StreamItem(val addon: String, val name: String, val title: String, val url: String) {
+    /** "4K", "1080p" … pulled from the addon's labels. */
+    val quality: String? get() = Regex("(?i)\\b(2160p|4k|uhd|1080p|720p|480p)\\b").find("$name $title")?.value?.uppercase()?.let {
+        when (it) { "2160P", "UHD" -> "4K"; else -> it.lowercase().replace("4k", "4K") }
+    }
+    val size: String? get() = Regex("(?i)(\\d+(?:\\.\\d+)?)\\s?(GB|MB)").find(title)?.value
+    val tags: List<String> get() = listOfNotNull(
+        if (Regex("(?i)\\b(dv|dolby ?vision)\\b").containsMatchIn("$name $title")) "DV" else null,
+        if (Regex("(?i)\\bhdr(10)?\\+?\\b").containsMatchIn("$name $title")) "HDR" else null,
+        if (Regex("(?i)\\b(atmos)\\b").containsMatchIn("$name $title")) "Atmos" else null,
+        if (Regex("(?i)\\bremux\\b").containsMatchIn("$name $title")) "Remux" else null,
+    )
+}
+
+/** An installed Stremio-style addon. */
+data class Addon(val url: String, val name: String, val resources: Set<String>, val types: Set<String>, val idPrefixes: List<String>)
+
+/**
+ * Discover: Stremio addons (your Usenet Ultimate for streams) plus free catalogs — Cinemeta for popular,
+ * new and top-rated titles, TVmaze for new episodes and premieres, and TMDB for upcoming movies when a key is set.
+ */
+object Stremio {
+    const val CINEMETA = "https://v3-cinemeta.strem.io"
+    const val DEFAULT_ADDON = "https://your-addon.example.com/manifest.json"
+
+    private val http: OkHttpClient by lazy { com.dekstream.tv.DekStreamApp.instance.http }
+    private val cache = ConcurrentHashMap<String, Pair<Long, String>>()
+
+    // ---------------- Settings ----------------
+    private fun sp(c: Context) = c.getSharedPreferences("discover", Context.MODE_PRIVATE)
+    fun addonUrls(c: Context): List<String> =
+        sp(c).getString("addons", null)?.split('\n')?.map { it.trim() }?.filter { it.startsWith("http") } ?: listOf(DEFAULT_ADDON)
+    fun setAddonUrls(c: Context, urls: List<String>) { sp(c).edit().putString("addons", urls.joinToString("\n")).apply(); manifests.clear() }
+    fun tmdbKey(c: Context): String = sp(c).getString("tmdb", "") ?: ""
+    fun setTmdbKey(c: Context, k: String) { sp(c).edit().putString("tmdb", k.trim()).apply() }
+    fun watchlist(c: Context): List<String> = sp(c).getString("list", "")!!.split('\n').filter { it.contains('|') }
+    fun inWatchlist(c: Context, m: MetaPreview) = watchlist(c).any { it.startsWith(m.type + "|" + m.id + "|") }
+    fun toggleWatchlist(c: Context, m: MetaPreview) {
+        val l = watchlist(c).toMutableList()
+        val i = l.indexOfFirst { it.startsWith(m.type + "|" + m.id + "|") }
+        if (i >= 0) l.removeAt(i) else l.add(0, listOf(m.type, m.id, m.name.replace('|', ' '), m.poster ?: "").joinToString("|"))
+        sp(c).edit().putString("list", l.take(200).joinToString("\n")).apply()
+    }
+    fun watchlistItems(c: Context): List<MetaPreview> = watchlist(c).mapNotNull {
+        val p = it.split('|'); if (p.size < 3) null
+        else MetaPreview(p[1], p[0], p[2], p.getOrNull(3)?.ifBlank { null }, null, null, null, null, null, emptyList())
+    }
+
+    // ---------------- HTTP ----------------
+    private suspend fun getText(url: String, ttlMs: Long = 30 * 60_000L): String = withContext(Dispatchers.IO) {
+        cache[url]?.let { (at, body) -> if (System.currentTimeMillis() - at < ttlMs) return@withContext body }
+        http.newCall(Request.Builder().url(url).header("User-Agent", "DekTV").build()).execute().use { r ->
+            if (!r.isSuccessful) error("HTTP ${r.code}")
+            val body = r.body?.string() ?: ""
+            cache[url] = System.currentTimeMillis() to body
+            body
+        }
+    }
+    private suspend fun getJson(url: String, ttlMs: Long = 30 * 60_000L) = JSONObject(getText(url, ttlMs))
+
+    // ---------------- Addons ----------------
+    private val manifests = ConcurrentHashMap<String, Addon>()
+    private fun base(url: String) = url.trim().removeSuffix("/manifest.json").removeSuffix("/")
+
+    suspend fun addons(c: Context): List<Addon> = coroutineScope {
+        addonUrls(c).map { u ->
+            async {
+                manifests[u] ?: runCatching {
+                    val m = getJson(u, 6 * 3600_000L)
+                    val res = HashSet<String>()
+                    m.optJSONArray("resources")?.let { a ->
+                        for (i in 0 until a.length()) res += (a.optJSONObject(i)?.optString("name") ?: a.optString(i))
+                    }
+                    Addon(u, m.optString("name", "Addon"), res, m.optJSONArray("types").strings().toSet(), m.optJSONArray("idPrefixes").strings())
+                        .also { manifests[u] = it }
+                }.getOrNull()
+            }
+        }.awaitAll().filterNotNull()
+    }
+
+    /** Streams for a movie ("tt123") or an episode ("tt123:1:2") from every addon that has streams. */
+    suspend fun streams(c: Context, type: String, id: String): List<StreamItem> = coroutineScope {
+        addons(c).filter { "stream" in it.resources && (it.types.isEmpty() || type in it.types) &&
+            (it.idPrefixes.isEmpty() || it.idPrefixes.any { p -> id.startsWith(p) }) }.map { a ->
+            async {
+                runCatching {
+                    val o = getJson("${base(a.url)}/stream/$type/${enc(id)}.json", 5 * 60_000L)
+                    val arr = o.optJSONArray("streams") ?: JSONArray()
+                    (0 until arr.length()).mapNotNull { i ->
+                        val s = arr.getJSONObject(i)
+                        val url = s.optString("url").ifBlank { null } ?: return@mapNotNull null
+                        StreamItem(a.name, s.optString("name").ifBlank { a.name }, s.optString("title").ifBlank { s.optString("description") }, url)
+                    }
+                }.getOrDefault(emptyList())
+            }
+        }.awaitAll().flatten()
+    }
+
+    // ---------------- Cinemeta catalogs ----------------
+    suspend fun catalog(type: String, id: String, genre: String? = null, skip: Int = 0): List<MetaPreview> {
+        val extra = listOfNotNull(genre?.let { "genre=${enc(it)}" }, if (skip > 0) "skip=$skip" else null).joinToString("&")
+        val url = "$CINEMETA/catalog/$type/$id" + (if (extra.isNotEmpty()) "/$extra" else "") + ".json"
+        val arr = runCatching { getJson(url).optJSONArray("metas") }.getOrNull() ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parsePreview(arr.optJSONObject(it), type) }.filter { it.poster != null }
+    }
+
+    suspend fun meta(type: String, id: String): MetaDetail? = runCatching {
+        val m = getJson("$CINEMETA/meta/$type/${enc(id)}.json", 6 * 3600_000L).getJSONObject("meta")
+        val p = parsePreview(m, type) ?: return null
+        val vids = m.optJSONArray("videos")
+        val eps = if (vids == null) emptyList() else (0 until vids.length()).mapNotNull { i ->
+            val v = vids.getJSONObject(i)
+            val s = v.optInt("season", -1); val e = v.optInt("episode", v.optInt("number", -1))
+            if (s < 0 || e < 0) null else Episode2(v.optString("id"), s, e, v.optString("title", v.optString("name")).ifBlank { "Episode $e" },
+                parseDate(v.optString("released")), v.optString("thumbnail").ifBlank { null }, v.optString("overview", v.optString("description")).ifBlank { null })
+        }.sortedWith(compareBy({ it.season }, { it.episode }))
+        MetaDetail(p, m.optString("runtime").ifBlank { null }, m.optJSONArray("cast").strings().take(8),
+            m.optJSONArray("director").strings().firstOrNull(), eps,
+            m.optJSONArray("trailers")?.optJSONObject(0)?.optString("source")?.ifBlank { null })
+    }.getOrNull()
+
+    private fun parsePreview(o: JSONObject?, fallbackType: String): MetaPreview? {
+        o ?: return null
+        val id = o.optString("imdb_id").ifBlank { o.optString("id") }.ifBlank { return null }
+        return MetaPreview(
+            id, o.optString("type", fallbackType), o.optString("name").ifBlank { return null },
+            o.optString("poster").ifBlank { null }, o.optString("background").ifBlank { null }, o.optString("logo").ifBlank { null },
+            o.optString("description").ifBlank { null }, o.optString("releaseInfo", o.optString("year")).ifBlank { null },
+            o.optString("imdbRating").ifBlank { null }, o.optJSONArray("genres").strings().ifEmpty { o.optJSONArray("genre").strings() },
+        )
+    }
+
+    // ---------------- TVmaze: new episodes and premieres ----------------
+    private fun day(offset: Int): String = Calendar.getInstance().let { it.add(Calendar.DAY_OF_YEAR, offset); SimpleDateFormat("yyyy-MM-dd", Locale.US).format(it.time) }
+
+    private data class TvEp(val imdb: String, val show: String, val image: String?, val season: Int, val number: Int, val airMs: Long, val summary: String?, val genres: List<String>)
+
+    private suspend fun tvDay(offset: Int): List<TvEp> = coroutineScope {
+        val d = day(offset)
+        listOf("https://api.tvmaze.com/schedule/web?date=$d&country=US", "https://api.tvmaze.com/schedule?country=US&date=$d").map { u ->
+            async {
+                runCatching {
+                    val arr = JSONArray(getText(u, 3 * 3600_000L))
+                    (0 until arr.length()).mapNotNull { i ->
+                        val e = arr.getJSONObject(i)
+                        val show = e.optJSONObject("show") ?: e.optJSONObject("_embedded")?.optJSONObject("show") ?: return@mapNotNull null
+                        val imdb = show.optJSONObject("externals")?.optString("imdb")?.ifBlank { null } ?: return@mapNotNull null
+                        TvEp(imdb, show.optString("name"), show.optJSONObject("image")?.optString("original")?.ifBlank { null },
+                            e.optInt("season"), e.optInt("number"), parseDate(e.optString("airstamp")) ?: 0L,
+                            show.optString("summary").replace(Regex("<[^>]+>"), "").ifBlank { null }, show.optJSONArray("genres").strings())
+                    }
+                }.getOrDefault(emptyList())
+            }
+        }.awaitAll().flatten()
+    }
+
+    /** Shows with an episode out today or yesterday (popular-ish: ones TVmaze has artwork for). */
+    suspend fun newEpisodes(): List<MetaPreview> = coroutineScope {
+        listOf(0, -1).map { async { tvDay(it) } }.awaitAll().flatten()
+            .filter { it.image != null }.distinctBy { it.imdb }.take(30).map { e ->
+                MetaPreview(e.imdb, "series", e.show, e.image, null, null, e.summary, null, null, e.genres,
+                    note = "S${e.season} E${e.number} · " + relDay(e.airMs))
+            }
+    }
+
+    /** Season premieres in the next 10 days. */
+    suspend fun premieres(): List<MetaPreview> = coroutineScope {
+        (1..10).map { async { tvDay(it) } }.awaitAll().flatten()
+            .filter { it.number == 1 && it.image != null }.distinctBy { it.imdb }.sortedBy { it.airMs }.take(30).map { e ->
+                MetaPreview(e.imdb, "series", e.show, e.image, null, null, e.summary, null, null, e.genres,
+                    note = (if (e.season == 1) "New series" else "Season ${e.season}") + " · " + relDay(e.airMs))
+            }
+    }
+
+    // ---------------- TMDB: movies coming soon (needs a free key) ----------------
+    suspend fun upcomingMovies(c: Context): List<MetaPreview> {
+        val key = tmdbKey(c).ifBlank { return emptyList() }
+        return runCatching {
+            val o = getJson("https://api.themoviedb.org/3/movie/upcoming?region=US&language=en-US&api_key=${enc(key)}", 6 * 3600_000L)
+            val arr = o.optJSONArray("results") ?: return emptyList()
+            val today = System.currentTimeMillis()
+            (0 until arr.length()).mapNotNull { i ->
+                val m = arr.getJSONObject(i)
+                val rel = parseDate(m.optString("release_date")) ?: return@mapNotNull null
+                if (rel < today - 86_400_000L) return@mapNotNull null
+                MetaPreview("tmdb:" + m.optInt("id"), "movie", m.optString("title"),
+                    m.optString("poster_path").ifBlank { null }?.let { "https://image.tmdb.org/t/p/w500$it" },
+                    m.optString("backdrop_path").ifBlank { null }?.let { "https://image.tmdb.org/t/p/w1280$it" }, null,
+                    m.optString("overview").ifBlank { null }, m.optString("release_date").take(4), null, emptyList(),
+                    note = "In theaters " + SimpleDateFormat("MMM d", Locale.getDefault()).format(java.util.Date(rel)), upcoming = true)
+            }.sortedBy { it.note }
+        }.getOrDefault(emptyList())
+    }
+
+    // ---------------- helpers ----------------
+    private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { optString(it).ifBlank { null } }
+    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20").replace("%3A", ":")
+    private fun parseDate(s: String?): Long? {
+        if (s.isNullOrBlank()) return null
+        for (f in listOf("yyyy-MM-dd'T'HH:mm:ssXXX", "yyyy-MM-dd'T'HH:mm:ss.SSSX", "yyyy-MM-dd'T'HH:mm:ssX", "yyyy-MM-dd"))
+            runCatching { return SimpleDateFormat(f, Locale.US).parse(s.trim())?.time }
+        return null
+    }
+    private fun relDay(ms: Long): String {
+        val c = Calendar.getInstance(); val today = c.get(Calendar.DAY_OF_YEAR); val year = c.get(Calendar.YEAR)
+        c.timeInMillis = ms
+        val diff = (c.get(Calendar.YEAR) - year) * 365 + c.get(Calendar.DAY_OF_YEAR) - today
+        return when (diff) { 0 -> "Today"; -1 -> "Yesterday"; 1 -> "Tomorrow"; else -> SimpleDateFormat("EEE MMM d", Locale.getDefault()).format(java.util.Date(ms)) }
+    }
+}

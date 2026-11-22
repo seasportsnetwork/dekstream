@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CalendarViewWeek
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
@@ -28,6 +29,7 @@ enum class Tab(val label: String, val icon: ImageVector) {
     Home("Home", Icons.Default.Home),
     Live("Live TV", Icons.Default.LiveTv),
     Favorites("Favorites", Icons.Default.Favorite),
+    Discover("Discover", Icons.Default.Explore),
     Guide("Guide", Icons.Default.CalendarViewWeek),
     Movies("Movies", Icons.Default.Movie),
     Series("Series", Icons.Default.Tv),
@@ -49,6 +51,8 @@ sealed interface Route {
     data object HomeSettings : Route
     data object Sync : Route
     data object PlaybackSettings : Route
+    data object Addons : Route
+    data class Title(val meta: com.dekstream.tv.data.MetaPreview) : Route
     data object ChannelManager : Route
     /** Full-screen multiview pre-filled with channels (e.g. from Sports). */
     data class Multiview(val channels: List<Channel>, val games: List<Game> = emptyList()) : Route
