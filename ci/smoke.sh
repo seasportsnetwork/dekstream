@@ -105,6 +105,15 @@ start --ez test_multiview true; sleep 20
 shot "$(printf %02d $n)-multiview"; n=$((n+1))
 key 4; sleep 2
 
+step "discover"
+start --es test_tab Discover; sleep 20
+shot "$(printf %02d $n)-discover"; n=$((n+1))
+key 20; sleep 1; key 20; sleep 3
+shot "$(printf %02d $n)-discover-rows"; n=$((n+1))
+start --ez test_title true; sleep 12
+shot "$(printf %02d $n)-title"; n=$((n+1))
+key 4; sleep 2
+
 step "update prompt"
 start --es test_tab Settings --ez test_update true; sleep 6
 shot "$(printf %02d $n)-update-prompt"; n=$((n+1))
