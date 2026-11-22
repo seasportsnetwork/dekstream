@@ -234,7 +234,7 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstr
             title = { Text("Save layout", color = DS.Text) },
             text = {
                 Column {
-                    OutlinedTextField(name, { name = it.take(20) }, singleLine = true, label = { Text("Name") })
+                    OutlinedTextField(name, { name = it.take(20) }, singleLine = true, label = { Text("Name") }, modifier = Modifier.tvTextInput())
                     Text("Keeps up to 8 layouts. Long-press a saved layout to delete it.", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                 }
             },
@@ -430,7 +430,7 @@ fun ChannelPickerDialog(onPick: (Channel) -> Unit, onDismiss: () -> Unit) {
         title = { Text("Choose a channel", color = DS.Text) },
         text = {
             Column {
-                OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Search channels") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Search channels") }, modifier = Modifier.tvTextInput().fillMaxWidth())
                 LoadView(all) { list ->
                     val n = q.trim().lowercase()
                     val shown = (if (n.isEmpty()) list.filter { it.streamId in favs } + list.filter { it.streamId !in favs }

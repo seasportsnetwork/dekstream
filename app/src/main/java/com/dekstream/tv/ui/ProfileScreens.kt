@@ -235,8 +235,7 @@ fun ProfileEditDialog(existing: Profile?, onDismiss: () -> Unit, onSaved: (Profi
                     Spacer(Modifier.width(14.dp))
                     OutlinedTextField(
                         name, { name = it.take(20) }, singleLine = true, label = { Text("Name") },
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
-                    )
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent), modifier = Modifier.tvTextInput())
                 }
                 Text("Color", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

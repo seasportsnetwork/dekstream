@@ -1,5 +1,11 @@
 package com.dekstream.tv.ui
 
+import androidx.compose.ui.input.key.type
+
+import androidx.compose.ui.input.key.key
+
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -239,6 +245,17 @@ fun SearchBarPill(onClick: () -> Unit, hint: String = "Channels, movies and show
     ) {
         Icon(Icons.Default.Search, null, tint = DS.TextDim, modifier = Modifier.size(18.dp))
         Text(hint, color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(start = 10.dp).weight(1f), maxLines = 1)
+    }
+}
+
+/** On a TV remote, OK on a text box opens the on-screen keyboard. */
+@Composable
+fun Modifier.tvTextInput(): Modifier {
+    val kb = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    return this.onPreviewKeyEvent { e ->
+        val ok = e.key == androidx.compose.ui.input.key.Key.DirectionCenter || e.key == androidx.compose.ui.input.key.Key.Enter ||
+            e.key == androidx.compose.ui.input.key.Key.NumPadEnter
+        if (ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) { kb?.show(); true } else ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown
     }
 }
 

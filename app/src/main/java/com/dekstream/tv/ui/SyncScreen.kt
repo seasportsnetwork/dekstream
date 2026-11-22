@@ -109,12 +109,12 @@ fun SyncScreen(state: AppState) {
                     Spacer(Modifier.height(16.dp))
                     OutlinedTextField(address, { address = it }, singleLine = true, label = { Text("Address (picked above, or type it)") },
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
-                        modifier = Modifier.fillMaxWidth())
+                        modifier = Modifier.tvTextInput().fillMaxWidth())
                     Spacer(Modifier.height(10.dp))
                     OutlinedTextField(code, { code = it.filter(Char::isDigit).take(6) }, singleLine = true, label = { Text("6-digit code") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
-                        modifier = Modifier.width(220.dp))
+                        modifier = Modifier.tvTextInput().width(220.dp))
                     err?.let { Text(it, color = DS.Live, fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp)) }
                     Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                         PillButton(if (busy) "Connecting…" else "Get setup", {

@@ -176,23 +176,23 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
                 }
             }
 
-            OutlinedTextField(name, { name = it }, label = { Text("Name (optional)") }, singleLine = true, colors = fieldColors, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(name, { name = it }, label = { Text("Name (optional)") }, singleLine = true, colors = fieldColors, modifier = Modifier.tvTextInput().fillMaxWidth())
 
             when (type) {
                 SourceType.XTREAM -> {
                     OutlinedTextField(url, { url = it }, label = { Text("Server URL") }, placeholder = { Text("http://example.com:8080") },
-                        singleLine = true, colors = fieldColors, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, colors = fieldColors, modifier = Modifier.tvTextInput().fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next))
-                    OutlinedTextField(user, { user = it }, label = { Text("Username") }, singleLine = true, colors = fieldColors, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(pass, { pass = it }, label = { Text("Password") }, singleLine = true, colors = fieldColors, modifier = Modifier.fillMaxWidth(),
+                    OutlinedTextField(user, { user = it }, label = { Text("Username") }, singleLine = true, colors = fieldColors, modifier = Modifier.tvTextInput().fillMaxWidth())
+                    OutlinedTextField(pass, { pass = it }, label = { Text("Password") }, singleLine = true, colors = fieldColors, modifier = Modifier.tvTextInput().fillMaxWidth(),
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password))
                 }
                 SourceType.M3U_URL -> {
                     OutlinedTextField(url, { url = it }, label = { Text("Playlist URL (.m3u / .m3u8)") }, singleLine = true, colors = fieldColors,
-                        modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                        modifier = Modifier.tvTextInput().fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                     OutlinedTextField(epgUrl, { epgUrl = it }, label = { Text("Guide (XMLTV) URL, optional") }, singleLine = true, colors = fieldColors,
-                        modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                        modifier = Modifier.tvTextInput().fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                     Text("Leave the guide empty if the playlist already includes one.", color = DS.TextDim, fontSize = 12.sp)
                 }
                 SourceType.M3U_FILE -> {
@@ -201,14 +201,14 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
                         Text("  " + (fileLabel ?: "Choose an .m3u file"), color = DS.Text)
                     }
                     OutlinedTextField(epgUrl, { epgUrl = it }, label = { Text("Guide (XMLTV) URL, optional") }, singleLine = true, colors = fieldColors,
-                        modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
+                        modifier = Modifier.tvTextInput().fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                 }
                 SourceType.STALKER -> {
                     OutlinedTextField(url, { url = it }, label = { Text("Portal URL") }, placeholder = { Text("http://portal.example.com/c/") },
-                        singleLine = true, colors = fieldColors, modifier = Modifier.fillMaxWidth(),
+                        singleLine = true, colors = fieldColors, modifier = Modifier.tvTextInput().fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
                     OutlinedTextField(mac, { mac = it.uppercase().take(17) }, label = { Text("MAC address") }, singleLine = true, colors = fieldColors,
-                        modifier = Modifier.fillMaxWidth())
+                        modifier = Modifier.tvTextInput().fillMaxWidth())
                     Text("Use the MAC your provider registered. The one shown is random, so give it to your provider, or replace it with yours.",
                         color = DS.TextDim, fontSize = 12.sp)
                 }
@@ -222,7 +222,7 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
             }
             OutlinedTextField(
                 extraEpg, { extraEpg = it }, label = { Text("Extra guides (XMLTV URLs, one per line)") }, colors = fieldColors,
-                modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4,
+                modifier = Modifier.tvTextInput().fillMaxWidth(), minLines = 2, maxLines = 4,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             )
             Text("Listed in priority order. They add guide data for channels the main guide misses and fill its gaps.",
@@ -230,7 +230,7 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
             if (type == SourceType.XTREAM) {
                 OutlinedTextField(
                     extraLogins, { extraLogins = it }, label = { Text("Extra logins for Multiview (username:password, one per line)") },
-                    colors = fieldColors, modifier = Modifier.fillMaxWidth(), minLines = 1, maxLines = 3,
+                    colors = fieldColors, modifier = Modifier.tvTextInput().fillMaxWidth(), minLines = 1, maxLines = 3,
                 )
                 Text("If your plan allows one stream per login, each extra login on the same server gives Multiview one more tile.",
                     color = DS.TextDim, fontSize = 12.sp)

@@ -92,8 +92,42 @@ object Collections {
     /** Titles for one source. Returns null when it can't be shown here (no TMDB key, addon missing, Trakt). */
     suspend fun items(c: Context, s: CSource): List<MetaPreview>? = when (s.provider) {
         "tmdb" -> tmdb(c, s)
-        "addon" -> Stremio.addonCatalog(c, s.addonId, s.type.ifBlank { "movie" }, s.catalogId, s.genre)
+        "addon" -> Stremio.addonCatalog(c, s.addonId, s.type.ifBlank { "movie" }, s.catalogId, s.genre) ?: fallback(c, s)
         else -> null
+    }
+
+    /**
+     * No AIOMetadata / Netflix-catalog addon installed: fill those rows from TMDB and DekTV's own lists instead.
+     */
+    private suspend fun fallback(c: Context, s: CSource): List<MetaPreview>? {
+        val id = s.catalogId.lowercase()
+        val tv = s.type == "series"
+        return when {
+            id.contains("watchlist") -> Stremio.watchlistItems(c).filter { s.type == "all" || it.type == s.type }
+            id.contains("upnext") || id.contains("unwatched") || id.contains("continue") -> continueItems(c)
+            s.addonId.contains("netflix") -> tmdbRaw(c, if (tv) "tv" else "movie", "discover", mapOf("with_watch_providers" to "8", "watch_region" to "US", "sort_by" to "popularity.desc"), tv)
+            id.contains("recommend") || id.contains("trending") || id.contains("popular") -> tmdbRaw(c, if (tv) "tv" else "movie", "trending/week", emptyMap(), tv)
+            else -> null
+        }
+    }
+
+    private fun continueItems(c: Context): List<MetaPreview> {
+        val app = com.dekstream.tv.DekStreamApp.instance
+        val prefs = runCatching { app.prefs }.getOrNull() ?: return emptyList()
+        return prefs.progress.value.values.filter { it.key.startsWith("st:") }.sortedByDescending { it.updatedAt }.mapNotNull { p ->
+            val parts = p.key.split(':')               // st:type:tt123[:s:e]
+            if (parts.size < 3) null else MetaPreview(parts[2], parts[1], p.title, p.poster, null, null, p.subtitle, null, null, emptyList())
+        }.distinctBy { it.id }
+    }
+
+    private suspend fun tmdbRaw(c: Context, kind: String, path: String, params: Map<String, String>, tv: Boolean): List<MetaPreview>? = withContext(Dispatchers.IO) {
+        val key = Stremio.tmdbKey(c).ifBlank { return@withContext null }
+        val url = "https://api.themoviedb.org/3/" + (if (path == "discover") "discover/$kind" else "$path".replace("trending/week", "trending/$kind/week")) +
+            "?api_key=$key&language=en-US" + params.entries.joinToString("") { "&${it.key}=${it.value}" }
+        val o = runCatching { http.newCall(Request.Builder().url(url).build()).execute().use { r -> JSONObject(r.body?.string() ?: "{}") } }.getOrNull()
+            ?: return@withContext emptyList()
+        val arr = o.optJSONArray("results") ?: JSONArray()
+        (0 until arr.length()).mapNotNull { i -> tmdbPreview(arr.optJSONObject(i), tv) }
     }
 
     /** Why a source can't be shown, for the empty state. */

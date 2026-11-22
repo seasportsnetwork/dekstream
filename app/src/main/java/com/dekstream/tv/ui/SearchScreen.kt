@@ -93,7 +93,7 @@ fun SearchScreen(state: AppState) {
                 placeholder = { Text("Search channels, movies, series") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.tvTextInput().weight(1f),
             )
             if (canVoice) {
                 Spacer(Modifier.width(10.dp))

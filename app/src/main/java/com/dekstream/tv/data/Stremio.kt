@@ -67,8 +67,20 @@ object Stremio {
     // ---------------- Settings ----------------
     private fun sp(c: Context) = c.getSharedPreferences("discover", Context.MODE_PRIVATE)
     fun addonUrls(c: Context): List<String> =
-        sp(c).getString("addons", null)?.split('\n')?.map { it.trim() }?.filter { it.startsWith("http") } ?: emptyList()
-    fun setAddonUrls(c: Context, urls: List<String>) { sp(c).edit().putString("addons", urls.joinToString("\n")).apply(); manifests.clear() }
+        sp(c).getString("addons", null)?.split('\n')?.map { normalizeManifest(it) }?.filter { it.startsWith("http") } ?: emptyList()
+
+    /** Accepts what people paste: the addon page, a configured path without manifest.json, or stremio:// links. */
+    fun normalizeManifest(raw: String): String {
+        var u = raw.trim().replace(Regex("^stremio://"), "https://")
+        if (u.isBlank()) return u
+        if (!u.startsWith("http")) u = "https://$u"
+        u = u.substringBefore('#').substringBefore('?')
+        if (u.endsWith("/configure")) u = u.removeSuffix("/configure")
+        return if (u.endsWith("manifest.json")) u else u.trimEnd('/') + "/manifest.json"
+    }
+    fun setAddonUrls(c: Context, urls: List<String>) {
+        sp(c).edit().putString("addons", urls.map { normalizeManifest(it) }.filter { it.startsWith("http") }.joinToString("\n")).apply(); manifests.clear()
+    }
     /** Movies & series from your IPTV provider too (false = addons only: IPTV Movies/Series hidden everywhere). */
     fun iptvVod(c: Context): Boolean = sp(c).getBoolean("iptvVod", true)
     fun setIptvVod(c: Context, on: Boolean) { sp(c).edit().putBoolean("iptvVod", on).apply() }
@@ -154,6 +166,35 @@ object Stremio {
         val url = "$CINEMETA/catalog/$type/$id" + (if (extra.isNotEmpty()) "/$extra" else "") + ".json"
         val arr = runCatching { getJson(url).optJSONArray("metas") }.getOrNull() ?: return emptyList()
         return (0 until arr.length()).mapNotNull { parsePreview(arr.optJSONObject(it), type) }.filter { it.poster != null }
+    }
+
+    /** Cinemeta search (used to look up IPTV movies by name). */
+    suspend fun search(type: String, query: String): List<MetaPreview> {
+        val arr = runCatching { getJson("$CINEMETA/catalog/$type/top/search=${enc(query)}.json", 24 * 3600_000L).optJSONArray("metas") }.getOrNull() ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { parsePreview(arr.optJSONObject(it), type) }
+    }
+
+    /**
+     * Finds full details (rating, cast, artwork…) for an IPTV title by name.
+     * Provider names look like "EN - The Batman (2022) 4K", so the noise is stripped first.
+     */
+    suspend fun lookup(type: String, rawName: String): MetaDetail? {
+        val year = Regex("\\b(19|20)\\d{2}\\b").findAll(rawName).lastOrNull()?.value
+        val clean = rawName
+            .replace(Regex("^\\s*[A-Z]{2,3}\\s*[-|:]\\s*"), "")          // "EN - "
+            .replace(Regex("\\[[^]]*]|\\([^)]*\\)"), " ")              // [4K] (2022)
+            .replace(Regex("(?i)\\b(4k|uhd|fhd|hd|sd|1080p|720p|2160p|hevc|x265|h264|multi|sub|dub|vod)\\b"), " ")
+            .replace(Regex("\\b(19|20)\\d{2}\\b"), " ")
+            .replace(Regex("[._]"), " ").replace(Regex("\\s+"), " ").trim(' ', '-', '|', ':')
+        if (clean.length < 2) return null
+        val hits = search(type, clean)
+        fun norm(x: String) = x.lowercase().replace(Regex("[^a-z0-9]"), "")
+        val best = hits.firstOrNull { norm(it.name) == norm(clean) && (year == null || it.year?.startsWith(year) == true) }
+            ?: hits.firstOrNull { year != null && it.year?.startsWith(year) == true && norm(it.name).contains(norm(clean)) }
+            ?: hits.firstOrNull { norm(it.name) == norm(clean) }
+            ?: hits.firstOrNull()?.takeIf { year == null || it.year?.startsWith(year) == true }
+            ?: return null
+        return meta(type, best.id)
     }
 
     suspend fun meta(type: String, id: String): MetaDetail? = runCatching {

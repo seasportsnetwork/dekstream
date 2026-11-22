@@ -52,12 +52,12 @@ fun AddonsScreen(state: AppState) {
         Text("Addons only hides your IPTV provider's Movies and Series everywhere (sidebar, Home, Search). Discover is where you browse.",
             color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         OutlinedTextField(urls, { urls = it }, label = { Text("Addon manifest URLs (one per line), e.g. your Usenet Ultimate") }, colors = colors,
-            modifier = Modifier.fillMaxWidth().padding(top = 18.dp), minLines = 2, maxLines = 6)
+            modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 18.dp), minLines = 2, maxLines = 6)
         OutlinedTextField(tmdb, { tmdb = it }, label = { Text("TMDB API key (optional, for Coming soon movies)") }, singleLine = true, colors = colors,
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+            modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 12.dp))
         Text("Get one free at themoviedb.org → Settings → API.", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         OutlinedTextField(coll, { coll = it }, label = { Text("Collections file (Nuvio collection JSON URL)") }, singleLine = true, colors = colors,
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+            modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 12.dp))
         Row(Modifier.padding(top = 8.dp)) {
             Pill("Use Kaptain's Collection", coll == Stremio.KAPTAIN, onClick = { coll = Stremio.KAPTAIN })
         }

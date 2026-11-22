@@ -95,11 +95,14 @@ private val sidebarGroups: List<Pair<String?, List<Tab>>> = listOf(
 
 @Composable
 private fun SideRail(state: AppState) {
-    val collapsed = Appearance.sidebarCollapsed
+    // Discover runs (near) full screen: the rail tucks away until you move onto it.
+    var railFocused by remember { mutableStateOf(false) }
+    val collapsed = Appearance.sidebarCollapsed || (state.tab == Tab.Discover && !railFocused)
     val visible = visibleTabs()
     Row(Modifier.fillMaxHeight()) {
         Column(
             Modifier
+                .onFocusChanged { railFocused = it.hasFocus }
                 .width(if (collapsed) 76.dp else 228.dp)
                 .fillMaxHeight()
                 .background(if (DS.Light) Color(0xFFFAFAFB) else Appearance.palette.surface.copy(alpha = 0.55f))

@@ -44,6 +44,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.foundation.border
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
@@ -208,45 +211,87 @@ fun MovieDetailScreen(v: Vod, state: AppState) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val info by rememberLoad(v.streamId) { repo.vodInfo(v) }
+    // Full details (rating, cast, artwork) from Cinemeta, matched by title + year.
+    var meta by remember(v.streamId) { mutableStateOf<com.dekstream.tv.data.MetaDetail?>(null) }
+    LaunchedEffect(v.streamId) { meta = runCatching { com.dekstream.tv.data.Stremio.lookup("movie", v.name) }.getOrNull() }
     val progress by app.prefs.progress.collectAsState()
     val resume = progress["vod:${v.streamId}"]
     BackHandler { state.pop() }
+    val i = info.valueOrNull()
+    val p = meta?.preview
+    val backdrop = p?.background ?: i?.backdrop ?: p?.poster ?: v.poster
+    val playFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { playFocus.requestFocus() } }
 
-    LazyColumn(Modifier.fillMaxSize()) {
-        item {
-            Box {
-                Hero(info.valueOrNull()?.backdrop ?: v.poster) {
-                    Text(v.name, color = DS.Text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                }
-                Box(Modifier.safeDrawingPadding()) { BackHeader("", state) }
-            }
-        }
-        item {
-            Column(Modifier.padding(horizontal = 20.dp)) {
-                val i = info.valueOrNull()
-                val meta = listOfNotNull(i?.releaseDate?.take(4), i?.duration, i?.genre, i?.rating?.let { "★ $it" }).joinToString("  ·  ")
-                if (meta.isNotBlank()) Text(meta, color = DS.TextDim, fontSize = 14.sp)
-                Row(Modifier.padding(vertical = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { state.play(repo.vodRequest(v)) },
-                        colors = ButtonDefaults.buttonColors(containerColor = DS.Accent),
-                        modifier = Modifier.focusRing(RoundedCornerShape(24.dp)),
-                    ) {
-                        Icon(Icons.Default.PlayArrow, null)
-                        Text(if (resume != null) " Resume" else " Play")
+    Box(Modifier.fillMaxSize().background(DS.Bg)) {
+        if (backdrop != null) AsyncImage(backdrop, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(DS.Bg, DS.Bg.copy(alpha = 0.85f), Color.Transparent))))
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, DS.Bg))))
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 40.dp, end = 40.dp, top = 24.dp, bottom = 40.dp)) {
+            item { Box(Modifier.safeDrawingPadding()) { BackHeader("", state) } }
+            item {
+                Column(Modifier.fillMaxWidth(0.6f).padding(top = 40.dp)) {
+                    if (p?.logo != null) {
+                        AsyncImage(p.logo, p.name, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,
+                            modifier = Modifier.height(110.dp).fillMaxWidth())
+                    } else {
+                        Text(p?.name ?: v.name, color = DS.Text, fontSize = 36.sp, fontWeight = FontWeight.Black, lineHeight = 40.sp)
                     }
-                    if (resume != null) {
+                    Spacer(Modifier.height(14.dp))
+                    // Rating · year · runtime · genres
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        val rating = p?.rating ?: i?.rating
+                        if (!rating.isNullOrBlank() && rating != "0") {
+                            Box(Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFF5C518)).padding(horizontal = 7.dp, vertical = 2.dp)) {
+                                Text("IMDb $rating", color = Color.Black, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        val bits = listOfNotNull(p?.year ?: i?.releaseDate?.take(4), meta?.runtime ?: i?.duration)
+                        if (bits.isNotEmpty()) Text(bits.joinToString("  ·  "), color = DS.Text, fontSize = 15.sp)
+                    }
+                    val genres = p?.genres?.takeIf { it.isNotEmpty() }?.take(4) ?: i?.genre?.split(',', '/')?.map { it.trim() }?.filter { it.isNotBlank() }.orEmpty()
+                    if (genres.isNotEmpty()) {
+                        Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            genres.forEach { g ->
+                                Box(Modifier.clip(RoundedCornerShape(50)).border(1.dp, DS.Line, RoundedCornerShape(50)).padding(horizontal = 10.dp, vertical = 3.dp)) {
+                                    Text(g, color = DS.TextDim, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                    Row(Modifier.padding(vertical = 18.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(
-                            onClick = { state.play(repo.vodRequest(v).copy(startPositionMs = 0)) },
-                            colors = ButtonDefaults.buttonColors(containerColor = DS.Surface2),
-                            modifier = Modifier.focusRing(RoundedCornerShape(24.dp)),
-                        ) { Text("Start over") }
+                            onClick = { state.play(repo.vodRequest(v)) },
+                            colors = ButtonDefaults.buttonColors(containerColor = DS.Accent),
+                            modifier = Modifier.focusRequester(playFocus).focusRing(RoundedCornerShape(24.dp)),
+                        ) {
+                            Icon(Icons.Default.PlayArrow, null)
+                            Text(if (resume != null) " Resume" else " Play")
+                        }
+                        if (resume != null) {
+                            Button(
+                                onClick = { state.play(repo.vodRequest(v).copy(startPositionMs = 0)) },
+                                colors = ButtonDefaults.buttonColors(containerColor = DS.Surface2),
+                                modifier = Modifier.focusRing(RoundedCornerShape(24.dp)),
+                            ) { Text("Start over") }
+                        }
                     }
+                    if (resume != null && resume.durationMs > 0) {
+                        val left = ((resume.durationMs - resume.positionMs) / 60000).coerceAtLeast(1)
+                        Text("$left min left", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
+                    }
+                    val plot = p?.description?.takeIf { it.isNotBlank() } ?: i?.plot
+                    plot?.let { Text(it, color = DS.Text, fontSize = 15.sp, lineHeight = 22.sp, maxLines = 6, overflow = TextOverflow.Ellipsis) }
+                    val cast = meta?.cast?.takeIf { it.isNotEmpty() }?.take(8)?.joinToString(", ") ?: i?.cast
+                    val director = meta?.director ?: i?.director
+                    if (!cast.isNullOrBlank()) Row(Modifier.padding(top = 14.dp)) {
+                        Text("Starring  ", color = DS.TextDim, fontSize = 13.sp); Text(cast, color = DS.Text, fontSize = 13.sp)
+                    }
+                    if (!director.isNullOrBlank()) Row(Modifier.padding(top = 4.dp)) {
+                        Text("Director  ", color = DS.TextDim, fontSize = 13.sp); Text(director, color = DS.Text, fontSize = 13.sp)
+                    }
+                    if (info is Load.Loading && meta == null) LoadView(info) {}
                 }
-                i?.plot?.let { Text(it, color = DS.Text, fontSize = 15.sp, lineHeight = 22.sp) }
-                i?.cast?.let { Text("Cast: $it", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp)) }
-                i?.director?.let { Text("Director: $it", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp)) }
-                if (info is Load.Loading) LoadView(info) {}
             }
         }
     }

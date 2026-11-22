@@ -201,7 +201,7 @@ fun TextInputDialog(title: String, initial: String, hint: String?, numeric: Bool
         text = {
             Column {
                 OutlinedTextField(v, { v = if (numeric) it.filter(Char::isDigit).take(5) else it.take(60) }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text))
+                    keyboardOptions = KeyboardOptions(keyboardType = if (numeric) KeyboardType.Number else KeyboardType.Text), modifier = Modifier.tvTextInput())
                 hint?.let { Text(it, color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp)) }
             }
         },
@@ -308,7 +308,7 @@ fun MatchGuideDialog(c: Channel, onDismiss: () -> Unit) {
         title = { Text("Match guide for ${c.name}", color = DS.Text, maxLines = 2) },
         text = {
             Column {
-                OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Search guide channels") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Search guide channels") }, modifier = Modifier.tvTextInput().fillMaxWidth())
                 when (val l = idx) {
                     is Load.Loading -> Text("Loading the guide…", color = DS.TextDim, modifier = Modifier.padding(top = 10.dp))
                     is Load.Err -> Text(l.message, color = DS.Live, modifier = Modifier.padding(top = 10.dp))
