@@ -87,10 +87,23 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstr
     val mvPrefs = remember { ctx.getSharedPreferences("multiview", android.content.Context.MODE_PRIVATE) }
     var hlsTiles by remember { mutableStateOf(mvPrefs.getBoolean("hls_" + repo.source.id, true)) }
     val limited = remember { mutableStateListOf(false, false, false, false) }
+    val limitWhy = remember { mutableStateListOf<String?>(null, null, null, null) }
     val scoreCard = remember { mutableStateListOf(false, false, false, false) }
     val account by rememberLoad(Unit) { runCatching { repo.provider.verify() }.getOrNull() }
     val maxConns = account.valueOrNull()?.maxConnections ?: 0
     val logins = 1 + repo.source.extraLogins.size
+    // Plan reports N streams per login: only that many tiles connect; the rest show what's on and swap in on OK.
+    // (Some providers drop your first stream when a second one connects, so don't even try.)
+    val streamSlots = if (maxConns > 0) maxConns * logins else 4
+    fun playingTile(except: Int): Int? =
+        (listOf(audio) + (0 until 4).toList()).firstOrNull { it != except && slots[it] != null && !limited[it] && !scoreCard[it] && it < streamSlots }
+    fun swapIn(i: Int) {
+        val j = playingTile(i) ?: run { limited[i] = false; return }
+        val t = slots[j]; slots[j] = slots[i]; slots[i] = t
+        limited[j] = false; limitWhy[j] = null
+        limited[i] = true
+        audio = j
+    }
 
     if (onExit != null) BackHandler { onExit() }
 
@@ -180,9 +193,13 @@ fun MultiviewScreen(initial: List<Channel> = emptyList(), games: List<com.dekstr
                     ScoreCardTile(game, swapping = swapFrom == i, onSelect = { tileClick(i) }, onVideo = { scoreCard[i] = false; limited[i] = false })
                 } else MultiTile(
                     channel = slots[i], hasAudio = audio == i, swapping = swapFrom == i,
-                    onSelect = { tileClick(i) }, onChange = { pickFor = i }, onClear = { slots[i] = null; limited[i] = false },
-                    slot = i, hls = hlsTiles, limited = limited[i], onLimited = { limited[i] = true },
+                    onSelect = { if (limited[i] || i >= streamSlots) swapIn(i) else tileClick(i) },
+                    onChange = { pickFor = i }, onClear = { slots[i] = null; limited[i] = false },
+                    // Wait for the plan's stream count before connecting anything beyond the first tile.
+                    slot = i, hls = hlsTiles, limited = limited[i] || i >= streamSlots || (i > 0 && account is Load.Loading),
+                    onLimited = { why -> limited[i] = true; limitWhy[i] = why },
                     canScore = game != null, onScore = { scoreCard[i] = true },
+                    why = limitWhy[i], oneStream = maxConns > 0 && streamSlots < 2,
                 )
             }
         }
@@ -249,9 +266,11 @@ private fun MultiTile(
     slot: Int = 0,
     hls: Boolean = false,
     limited: Boolean = false,
-    onLimited: () -> Unit = {},
+    onLimited: (String) -> Unit = {},
     canScore: Boolean = false,
     onScore: () -> Unit = {},
+    why: String? = null,
+    oneStream: Boolean = false,
 ) {
     val shape = RoundedCornerShape(10.dp)
     Box(
@@ -276,13 +295,7 @@ private fun MultiTile(
             }
         } else {
             if (!limited) TilePlayer(channel, hasAudio, slot, hls, onLimited)
-            else Column(Modifier.align(Alignment.Center).padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Couldn't start this stream", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text("Your plan probably allows fewer streams at once. Add another login in the playlist settings, " +
-                    "or turn on one-connection mode.", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 8.dp))
-                if (canScore) PillButton("Show live score here", onScore, Icons.Default.Scoreboard, primary = true)
-            }
+            else WaitingTile(channel, why, oneStream, canScore, onScore)
             Row(
                 Modifier.align(Alignment.TopStart).fillMaxWidth().background(Color(0x99000000)).padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -297,10 +310,12 @@ private fun MultiTile(
 
 @OptIn(UnstableApi::class)
 @Composable
-private fun TilePlayer(channel: Channel, hasAudio: Boolean, slot: Int = 0, hls: Boolean = false, onLimited: () -> Unit = {}) {
+private fun TilePlayer(channel: Channel, hasAudio: Boolean, slot: Int = 0, hlsWanted: Boolean = false, onLimited: (String) -> Unit = {}) {
     val context = LocalContext.current
     val repo = DekStreamApp.instance.repo ?: return
     val player = remember(channel.streamId) { buildPlayer(context, live = true, small = true) }
+    // If the provider doesn't serve HLS (404/400), fall back to TS once before calling it refused.
+    var hls by remember(channel.streamId) { mutableStateOf(hlsWanted) }
     LaunchedEffect(channel.streamId, hls) {
         val src = repo.source
         var url = repo.liveRequest(channel).url
@@ -322,7 +337,11 @@ private fun TilePlayer(channel: Channel, hasAudio: Boolean, slot: Int = 0, hls: 
     }
     DisposableEffect(player) {
         val l = object : androidx.media3.common.Player.Listener {
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) { onLimited() }
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
+                val code = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+                if (hls && (code == 404 || code == 400 || code == 405)) { hls = false; return }
+                onLimited(if (code != null) "HTTP $code" else error.errorCodeName.removePrefix("ERROR_CODE_").lowercase().replace('_', ' '))
+            }
         }
         player.addListener(l)
         onDispose { player.removeListener(l); player.release() }
@@ -340,6 +359,30 @@ private fun TilePlayer(channel: Channel, hasAudio: Boolean, slot: Int = 0, hls: 
         update = { it.player = player },
         modifier = Modifier.fillMaxSize(),
     )
+}
+
+/** A tile that isn't streaming: what's on, why, and OK to bring it into the playing tile. */
+@Composable
+private fun WaitingTile(channel: Channel, why: String?, oneStream: Boolean, canScore: Boolean, onScore: () -> Unit) {
+    val repo = DekStreamApp.instance.repo
+    val now by androidx.compose.runtime.produceState<com.dekstream.tv.data.Program?>(null, channel.streamId) {
+        value = runCatching { repo?.nowNext(channel)?.firstOrNull { it.isLive() } }.getOrNull()
+    }
+    Column(Modifier.fillMaxSize().padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        ChannelLogo(channel.icon, 56.dp)
+        Text(now?.title ?: channel.name, color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 2,
+            modifier = Modifier.padding(top = 8.dp))
+        now?.let { Text("${minutesLeft(it)} left", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp) }
+        Text(
+            when {
+                oneStream -> "Your plan streams one channel at a time · press OK to watch this one here"
+                why != null -> "Couldn't start ($why) · press OK to watch this one here instead"
+                else -> "Press OK to watch this one here"
+            },
+            color = Color.White.copy(alpha = 0.75f), fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+        )
+        if (canScore) PillButton("Show live score here", onScore, Icons.Default.Scoreboard, onImage = true)
+    }
 }
 
 /** A live score card in place of a stream (for games your plan can't stream at the same time). */
