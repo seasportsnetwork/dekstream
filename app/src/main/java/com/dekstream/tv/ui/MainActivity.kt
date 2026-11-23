@@ -316,6 +316,9 @@ private fun SignedIn() {
     Box(Modifier.fillMaxSize().then(
         if (pp.burnIn && !videoOn) Modifier.offset(offsets[shift].first.dp, offsets[shift].second.dp) else Modifier,
     )) {
+    val saver = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    androidx.compose.runtime.LaunchedEffect(FocusMemory.restore) { if (FocusMemory.restore != null) { kotlinx.coroutines.delay(4000); FocusMemory.restore = null } }
+    saver.SaveableStateProvider(if (top == null) "shell" else "r${state.stack.size}:${top.hashCode()}") {
     when (top) {
         null -> Shell(state)
         is Route.Player -> PlayerScreen(top.request, top.zapList, onExit = { state.pop() })
@@ -335,6 +338,7 @@ private fun SignedIn() {
         is Route.Folder -> FolderScreen(top.folder, state)
         Route.ChannelManager -> ChannelManagerScreen(state)
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
+    }
     }
     }
     // Mini player: live TV keeps playing in a corner while you browse (Back from the player).

@@ -17,6 +17,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -123,8 +126,21 @@ fun Modifier.focusRing(shape: Shape = RectangleShape, scale: Float = 1.05f): Mod
     var focused by remember { mutableStateOf(false) }
     val s by animateFloatAsState(if (focused) scale else 1f, label = "focusScale")
     val glow = Appearance.selectionIdx == 2
+    // Coming back to a screen puts focus back on the item you left from.
+    val hash = androidx.compose.runtime.currentCompositeKeyHash
+    val fr = remember { androidx.compose.ui.focus.FocusRequester() }
+    var pos by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
+    val want = FocusMemory.restore
+    androidx.compose.runtime.LaunchedEffect(want, pos) {
+        val p = pos ?: return@LaunchedEffect
+        if (want != null && want.hash == hash && kotlin.math.abs(want.x - p.x) < 24f && kotlin.math.abs(want.y - p.y) < 24f) {
+            if (runCatching { fr.requestFocus() }.isSuccess) FocusMemory.restore = null
+        }
+    }
     this
-        .onFocusChanged { focused = it.isFocused }
+        .focusRequester(fr)
+        .onGloballyPositioned { pos = it.positionInRoot() }
+        .onFocusChanged { focused = it.isFocused; if (it.isFocused) pos?.let { p -> FocusMemory.last = FocusMemory.Spot(hash, p.x, p.y) } }
         .graphicsLayer { scaleX = s; scaleY = s }
         .then(
             when {
@@ -172,4 +188,18 @@ fun Modifier.tvClickable(onClick: () -> Unit, onLongClick: (() -> Unit)? = null)
             }
         }
         .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+}
+
+
+/** Remembers the focused item per screen depth so Back lands where you were. */
+object FocusMemory {
+    data class Spot(val hash: Int, val x: Float, val y: Float)
+    var last: Spot? = null
+    var restore by mutableStateOf<Spot?>(null)
+    private val saved = HashMap<Int, Spot>()
+    fun leaving(depth: Int) { last?.let { saved[depth] = it } }
+    fun returning(depth: Int) {
+        restore = saved.remove(depth)
+        saved.keys.filter { it > depth }.forEach { saved.remove(it) }
+    }
 }

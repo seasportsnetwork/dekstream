@@ -67,8 +67,8 @@ class AppState {
     var tab by mutableStateOf(Tab.Home)
     val stack = mutableStateListOf<Route>()
 
-    fun push(r: Route) { stack.add(r) }
-    fun pop(): Boolean = if (stack.isNotEmpty()) { stack.removeAt(stack.lastIndex); true } else false
+    fun push(r: Route) { FocusMemory.leaving(stack.size); stack.add(r) }
+    fun pop(): Boolean = if (stack.isNotEmpty()) { stack.removeAt(stack.lastIndex); FocusMemory.returning(stack.size); true } else false
 
     /** Plays over the current player instead of stacking another one. */
     fun playReplacing(req: PlayRequest, zapList: List<Channel> = emptyList()) {

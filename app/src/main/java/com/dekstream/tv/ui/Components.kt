@@ -51,14 +51,21 @@ sealed interface Load<out T> {
 fun <T> Load<T>.valueOrNull(): T? = (this as? Load.Ok<T>)?.value
 
 @Composable
-fun <T> rememberLoad(vararg keys: Any?, block: suspend () -> T): State<Load<T>> =
-    produceState<Load<T>>(Load.Loading, *keys) {
-        value = try {
-            Load.Ok(block())
-        } catch (e: Exception) {
+@Suppress("UNCHECKED_CAST")
+fun <T> rememberLoad(vararg keys: Any?, block: suspend () -> T): State<Load<T>> {
+    // Show the last result straight away when a screen comes back (no spinner, scroll and focus survive),
+    // then refresh it quietly.
+    val cacheKey = androidx.compose.runtime.currentCompositeKeyHash.toString() + keys.toList().hashCode()
+    val cached = LoadCache.get(cacheKey) as Load<T>?
+    return produceState(cached ?: Load.Loading, *keys) {
+        val fresh: Load<T> = try { Load.Ok(block()) } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) {
             Load.Err(e.message ?: "Something went wrong")
         }
+        if (fresh is Load.Ok || value !is Load.Ok) { value = fresh; if (fresh is Load.Ok) LoadCache.put(cacheKey, fresh) }
     }
+}
+
+private object LoadCache : android.util.LruCache<String, Load<*>>(150)
 
 @Composable
 fun <T> LoadView(

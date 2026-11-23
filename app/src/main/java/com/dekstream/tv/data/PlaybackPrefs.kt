@@ -21,7 +21,7 @@ object PlaybackPrefs {
     var bestVersion by mutableStateOf(true); private set
     var burnIn by mutableStateOf(true); private set
     /** Back while watching live TV shrinks to a mini player instead of stopping. */
-    var backToMini by mutableStateOf(true); private set
+    var backToMini by mutableStateOf(false); private set
 
     fun load(c: Context) {
         ctx = c.applicationContext
@@ -33,7 +33,7 @@ object PlaybackPrefs {
         startOn = sp.getString("startOn", "home")!!
         bestVersion = sp.getBoolean("best", true)
         burnIn = sp.getBoolean("burnIn", true)
-        backToMini = sp.getBoolean("mini", true)
+        backToMini = sp.getBoolean("mini2", false)
     }
 
     fun changeMatchFrameRate(v: Boolean) { matchFrameRate = v; sp.edit().putBoolean("afr", v).apply() }
@@ -44,7 +44,7 @@ object PlaybackPrefs {
     fun changeStartOn(v: String) { startOn = v; sp.edit().putString("startOn", v).apply() }
     fun changeBestVersion(v: Boolean) { bestVersion = v; sp.edit().putBoolean("best", v).apply() }
     fun changeBurnIn(v: Boolean) { burnIn = v; sp.edit().putBoolean("burnIn", v).apply() }
-    fun changeBackToMini(v: Boolean) { backToMini = v; sp.edit().putBoolean("mini", v).apply() }
+    fun changeBackToMini(v: Boolean) { backToMini = v; sp.edit().putBoolean("mini2", v).apply() }
 
     // ---- Best version of a channel: the copy that played best, per channel name ----
     fun best(group: String): Pair<Int, Int>? =
