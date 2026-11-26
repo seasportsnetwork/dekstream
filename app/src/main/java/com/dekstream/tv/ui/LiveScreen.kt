@@ -231,7 +231,7 @@ fun ChannelList(
         return
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {
-        items(channels, key = { it.streamId }) { c ->
+        items(channels.distinctBy { it.streamId }, key = { it.streamId }) { c ->
             val epg by produceState<List<Program>>(emptyList(), c.streamId) { value = repo.nowNext(c) }
             val now = epg.firstOrNull { it.isLive() }
             val next = epg.firstOrNull { it.startMs > System.currentTimeMillis() }

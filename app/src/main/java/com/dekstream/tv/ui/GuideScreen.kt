@@ -132,7 +132,7 @@ fun GuideScreen(state: AppState) {
                             }
                         }
                         LazyColumn(Modifier.fillMaxSize()) {
-                            items(channels, key = { it.streamId }) { c ->
+                            items(channels.distinctBy { it.streamId }, key = { it.streamId }) { c ->
                                 GuideRow(
                                     c, windowStart, windowEnd, pxPerMin, scrollX, viewportPx,
                                     onScrollTo = { scrollX = it.coerceIn(0f, maxScroll) },

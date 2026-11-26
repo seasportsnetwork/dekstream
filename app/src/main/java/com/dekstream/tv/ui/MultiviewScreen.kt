@@ -437,7 +437,7 @@ fun ChannelPickerDialog(onPick: (Channel) -> Unit, onDismiss: () -> Unit) {
                     val shown = (if (n.isEmpty()) list.filter { it.streamId in favs } + list.filter { it.streamId !in favs }
                         else list.filter { it.name.lowercase().contains(n) }).take(150)
                     LazyColumn(Modifier.heightIn(max = 380.dp).padding(top = 8.dp)) {
-                        items(shown, key = { it.streamId }) { c ->
+                        items(shown.distinctBy { it.streamId }, key = { it.streamId }) { c ->
                             val shape = RoundedCornerShape(8.dp)
                             Row(
                                 Modifier.fillMaxWidth().padding(vertical = 2.dp).focusRing(shape, 1.02f).clip(shape)

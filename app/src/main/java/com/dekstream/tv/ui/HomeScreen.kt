@@ -162,7 +162,7 @@ fun HomeScreen(state: AppState) {
 
     val channels = all.valueOrNull().orEmpty()
     val byId = remember(channels) { channels.associateBy { it.streamId } }
-    val favChannels = favIds.mapNotNull { byId[it] }
+    val favChannels = favIds.distinct().mapNotNull { byId[it] }
     val lastChannel = recentIds.firstNotNullOfOrNull { byId[it] }
     val cont = if (showMovies || showSeries) progress.values.sortedByDescending { it.updatedAt } else emptyList()
     val gameList = games.valueOrNull().orEmpty()
@@ -273,7 +273,7 @@ fun HomeScreen(state: AppState) {
                         }
                     } else {
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                            items(favChannels, key = { "f" + it.streamId }) { c ->
+                            items(favChannels.distinctBy { it.streamId }, key = { "f" + it.streamId }) { c ->
                                 Box(Modifier.width(290.dp)) { FavChannelTile(c, onClick = { playLive(c, favChannels) }, onLongClick = null, preset = nowOf(c)) }
                             }
                         }
@@ -286,7 +286,7 @@ fun HomeScreen(state: AppState) {
                 item { SectionHeader("Coming up on your channels", "Press OK for a reminder, hold OK to watch the channel", modifier = Modifier.padding(horizontal = pad)) }
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(upNext, key = { "u" + it.channel.streamId + "-" + it.program.startMs }) { u ->
+                        items(upNext.distinctBy { it.channel.streamId to it.program.startMs }, key = { "u" + it.channel.streamId + "-" + it.program.startMs }) { u ->
                             val on = reminders.any { it.streamId == u.channel.streamId && it.startMs == u.program.startMs }
                             UpNextCard(u, on,
                                 onClick = {
@@ -306,7 +306,7 @@ fun HomeScreen(state: AppState) {
                 }
                 item(key = "cr-" + cat.id) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list, key = { "c" + cat.id + "-" + it.streamId }) { c -> ChannelNowTile(c, nowOf(c)) { playLive(c, list) } }
+                        items(list.distinctBy { it.streamId }, key = { "c" + cat.id + "-" + it.streamId }) { c -> ChannelNowTile(c, nowOf(c)) { playLive(c, list) } }
                     }
                 }
             }
@@ -343,7 +343,7 @@ fun HomeScreen(state: AppState) {
                 }
                 item(key = "mr-${cat.id}") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list, key = { it.streamId }) { v -> MoviePoster(v, state, progress) }
+                        items(list.distinctBy { it.streamId }, key = { it.streamId }) { v -> MoviePoster(v, state, progress) }
                     }
                 }
             }
@@ -353,7 +353,7 @@ fun HomeScreen(state: AppState) {
                 }
                 item(key = "sr-${cat.id}") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list, key = { it.seriesId }) { s -> PosterCard(s.name, s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }) }
+                        items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s -> PosterCard(s.name, s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }) }
                     }
                 }
             }
@@ -522,7 +522,7 @@ private fun ScoresPanel(
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(4.dp),
                     ) {
-                        gridItems(shown, key = { it.league.key + ":" + it.id }) { g ->
+                        gridItems(shown.distinctBy { it.league.key + ":" + it.id }, key = { it.league.key + ":" + it.id }) { g ->
                             MiniScore(g, hide, g.hasFavorite(favs), Modifier.fillMaxWidth().height(64.dp)) { onGame(g) }
                         }
                     }

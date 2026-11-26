@@ -75,7 +75,7 @@ fun FavoritesScreen(state: AppState) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var editing by rememberSaveable { mutableStateOf(false) }
     val byId = all.valueOrNull().orEmpty().associateBy { it.streamId }
-    val favs = favIds.mapNotNull { byId[it] }
+    val favs = favIds.distinct().mapNotNull { byId[it] }
 
     LazyVerticalGrid(
         GridCells.Adaptive(270.dp),
@@ -108,7 +108,7 @@ fun FavoritesScreen(state: AppState) {
                 EmptyFavorites("No favorite channels yet", "In Live TV or the Guide, hold OK (or long-press) on a channel to add it here.",
                     "Browse Live TV") { state.tab = Tab.Live }
             }
-            else items(favs, key = { it.streamId }) { c ->
+            else items(favs.distinctBy { it.streamId }, key = { it.streamId }) { c ->
                 if (editing) {
                     val i = favs.indexOf(c)
                     BentoCard(Modifier.fillMaxWidth().height(132.dp)) {

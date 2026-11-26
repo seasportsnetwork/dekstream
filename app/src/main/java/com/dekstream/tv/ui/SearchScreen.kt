@@ -98,7 +98,7 @@ fun SearchScreen(state: AppState) {
                 item { SectionTitle("Movies") }
                 item {
                     LazyRow(horizontalArrangement = rowSpacing) {
-                        items(movies, key = { it.streamId }) { v ->
+                        items(movies.distinctBy { it.streamId }, key = { it.streamId }) { v ->
                             PosterCard(v.name, v.poster, 120.dp, onClick = { state.push(Route.MovieDetail(v)) })
                         }
                     }
@@ -108,7 +108,7 @@ fun SearchScreen(state: AppState) {
                 item { SectionTitle("Series") }
                 item {
                     LazyRow(horizontalArrangement = rowSpacing) {
-                        items(shows, key = { it.seriesId }) { s ->
+                        items(shows.distinctBy { it.seriesId }, key = { it.seriesId }) { s ->
                             PosterCard(s.name, s.cover, 120.dp, onClick = { state.push(Route.SeriesDetail(s)) })
                         }
                     }

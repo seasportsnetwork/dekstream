@@ -801,7 +801,7 @@ private fun ChannelPanel(channels: List<Channel>, currentId: Int?, title: String
     ) {
         Text(title, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
         LazyColumn(state = listState) {
-            itemsIndexed(channels, key = { _, c -> c.streamId }) { i, c ->
+            itemsIndexed(channels, key = { i, c -> "$i:${c.streamId}" }) { i, c ->
                 val now by produceState<Program?>(null, c.streamId) { value = repo?.nowNext(c)?.firstOrNull { it.isLive() } }
                 val selected = c.streamId == currentId
                 val shape = RoundedCornerShape(10.dp)

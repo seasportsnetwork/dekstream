@@ -231,13 +231,13 @@ fun GameDetailScreen(initial: Game, state: AppState) {
                 val shownGuesses = shown.filter { !it.confirmed }
                 if (shownConfirmed.isNotEmpty()) {
                     item { SectionLabel("CONFIRMED IN YOUR GUIDE") }
-                    items(shownConfirmed, key = { "c" + it.channel.streamId }) { m ->
+                    items(shownConfirmed.distinctBy { it.channel.streamId }, key = { "c" + it.channel.streamId }) { m ->
                         MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, shownConfirmed) }
                     }
                 }
                 if (shownGuesses.isNotEmpty()) {
                     item { SectionLabel(if (shownConfirmed.isEmpty()) "POSSIBLE CHANNELS · NOT IN GUIDE" else "OTHER POSSIBLE CHANNELS") }
-                    items(shownGuesses, key = { "g" + it.channel.streamId }) { m ->
+                    items(shownGuesses.distinctBy { it.channel.streamId }, key = { "g" + it.channel.streamId }) { m ->
                         MatchRow(m, m.channel.streamId in pinned, onPin = { app.prefs.toggleSportsChannel(m.channel.streamId) }) { play(m, shownGuesses) }
                     }
                 }

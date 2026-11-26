@@ -109,7 +109,7 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState, onHer
             val items by rememberLoad(cat.id) { repo.series(cat.id) }
             LoadView(items, Modifier.height(220.dp)) { list ->
                 LazyRow(horizontalArrangement = rowSpacing, contentPadding = PaddingValues(end = 20.dp)) {
-                    items(list.take(40), key = { it.seriesId }) { s ->
+                    items(list.distinctBy { it.seriesId }.take(40), key = { it.seriesId }) { s ->
                         PosterCard(
                             s.name, s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) },
                             modifier = Modifier.onFocusChanged {
@@ -125,7 +125,7 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState, onHer
             val items by rememberLoad(cat.id) { repo.vods(cat.id) }
             LoadView(items, Modifier.height(220.dp)) { list ->
                 LazyRow(horizontalArrangement = rowSpacing, contentPadding = PaddingValues(end = 20.dp)) {
-                    items(list.take(40), key = { it.streamId }) { v ->
+                    items(list.distinctBy { it.streamId }.take(40), key = { it.streamId }) { v ->
                         var focused by remember { mutableStateOf(false) }
                         LaunchedEffect(focused) {
                             if (!focused) return@LaunchedEffect
@@ -173,7 +173,7 @@ fun VodCategoryScreen(cat: Category, isSeries: Boolean, state: AppState) {
                     GridCells.Adaptive(130.dp), contentPadding = PaddingValues(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    items(list, key = { it.seriesId }) { s ->
+                    items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s ->
                         PosterCard(s.name, s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) })
                     }
                 }
@@ -185,7 +185,7 @@ fun VodCategoryScreen(cat: Category, isSeries: Boolean, state: AppState) {
                     GridCells.Adaptive(130.dp), contentPadding = PaddingValues(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    items(list, key = { it.streamId }) { v ->
+                    items(list.distinctBy { it.streamId }, key = { it.streamId }) { v ->
                         PosterCard(v.name, v.poster, 130.dp, progress = progress["vod:${v.streamId}"]?.fraction,
                             onClick = { state.push(Route.MovieDetail(v)) })
                     }

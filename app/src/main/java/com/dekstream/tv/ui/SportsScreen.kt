@@ -243,7 +243,7 @@ fun SportsScreen(state: AppState) {
                 Column {
                     SectionLabel("YOUR CHANNELS")
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(pinned, key = { "pin-" + it.streamId }) { c ->
+                        items(pinned.distinctBy { it.streamId }, key = { "pin-" + it.streamId }) { c ->
                             PinnedChannelCard(c,
                                 onClick = { r -> app.prefs.markChannelWatched(c.streamId); state.play(r.liveRequest(c), pinned) },
                                 onLongClick = { app.prefs.toggleSportsChannel(c.streamId) })
