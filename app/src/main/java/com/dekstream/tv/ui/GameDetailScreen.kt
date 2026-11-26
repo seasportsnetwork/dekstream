@@ -91,8 +91,11 @@ fun GameDetailScreen(initial: Game, state: AppState) {
 
     // Find channels fast: names + any cached guide first, then the full guide (saved on the device),
     // and only ask the provider channel-by-channel when there's no full guide. All off the main thread.
-    var finishing by remember { mutableStateOf(true) }
-    val matches by produceState<Load<List<ChannelMatch>>>(Load.Loading, initial.id) {
+    val cacheKey = "${repo.source.id}:${initial.id}"
+    val cachedMatches = MatchCache.get(cacheKey)
+    var finishing by remember { mutableStateOf(cachedMatches == null) }
+    val matches by produceState<Load<List<ChannelMatch>>>(cachedMatches?.let { Load.Ok(it) } ?: Load.Loading, initial.id) {
+        if (cachedMatches != null) return@produceState   // found recently: show it instantly, no new search
         val all = runCatching { repo.allChannels() }.getOrElse { value = Load.Err(it.message ?: "Couldn't load channels"); finishing = false; return@produceState }
         var current = SportsRepo.matchChannelsAsync(initial, all, app.epg.takeIf { it.isLoaded })
         value = Load.Ok(current)
@@ -118,6 +121,7 @@ fun GameDetailScreen(initial: Game, state: AppState) {
             current = current.map { byId[it.channel.streamId] ?: it }.sortedByDescending { it.score }
             value = Load.Ok(current)
         }
+        if (current.isNotEmpty()) MatchCache.put(cacheKey, current)
         finishing = false
     }
     var tab by rememberSaveable(initial.id) { mutableIntStateOf(0) }
@@ -451,5 +455,18 @@ private fun CatchMeUpCard(g: Game, plays: List<com.dekstream.tv.data.ScoringPlay
                 }
             }
         }
+    }
+}
+
+
+/** Channels found for a game stay remembered for a while, so going back and in again is instant. */
+object MatchCache {
+    private const val KEEP_MS = 15 * 60_000L
+    private val map = java.util.concurrent.ConcurrentHashMap<String, Pair<Long, List<ChannelMatch>>>()
+    fun get(key: String): List<ChannelMatch>? =
+        map[key]?.takeIf { System.currentTimeMillis() - it.first < KEEP_MS }?.second
+    fun put(key: String, v: List<ChannelMatch>) {
+        if (map.size > 100) map.entries.removeIf { System.currentTimeMillis() - it.value.first > KEEP_MS }
+        map[key] = System.currentTimeMillis() to v
     }
 }

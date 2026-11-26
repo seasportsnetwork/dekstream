@@ -175,7 +175,10 @@ fun SportsScreen(state: AppState) {
         scope.launch {
             val chans = r.allChannels()
             val idx = r.guideIndex()
-            val pairs = selected.mapNotNull { g -> SportsRepo.matchChannelsAsync(g, chans, idx).firstOrNull()?.channel?.let { it to g } }
+            val pairs = selected.mapNotNull { g ->
+                val found = MatchCache.get("${r.source.id}:${g.id}") ?: SportsRepo.matchChannelsAsync(g, chans, idx).also { if (it.isNotEmpty()) MatchCache.put("${r.source.id}:${g.id}", it) }
+                found.firstOrNull()?.channel?.let { it to g }
+            }
             launching = false
             if (pairs.isNotEmpty()) {
                 selecting = false; selected.clear()
