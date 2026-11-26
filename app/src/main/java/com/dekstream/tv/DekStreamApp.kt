@@ -54,8 +54,6 @@ class DekStreamApp : Application() {
     var pendingTestSection by mutableStateOf<Int?>(null)
     private val memSamples = ArrayList<String>()
     var pendingTestPlay by mutableStateOf<String?>(null)
-    /** Live TV shrunk to a corner while browsing: what's playing and its channel list. */
-    var mini by mutableStateOf<Pair<com.dekstream.tv.data.PlayRequest, List<com.dekstream.tv.data.Channel>>?>(null)
     var startupHandled = false
     /** The search/mic key was pressed: Search opens listening. */
     var voiceSearchRequested by mutableStateOf(false)
@@ -78,10 +76,8 @@ class DekStreamApp : Application() {
     /** Set by the player when OK is pressed while an alert is showing. */
     var alertWatchRequested by mutableStateOf(false)
 
-    /** Set while the full-screen player is open (for auto picture-in-picture). */
+    /** Set while the full-screen player is open. */
     var playerActive by mutableStateOf(false)
-    /** True while the activity is shown as a picture-in-picture window. */
-    var inPip by mutableStateOf(false)
 
     val repo: Repo? get() = session?.repo
     val prefs: Prefs get() = session?.prefs ?: error("No active profile")

@@ -128,10 +128,6 @@ private fun SideRail(state: AppState) {
                 }
             }
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                val app0 = com.dekstream.tv.DekStreamApp.instance
-                app0.mini?.let { m ->
-                    NowPlayingItem(m.first.title, collapsed) { app0.mini = null; state.play(m.first, m.second) }
-                }
                 sidebarGroups.forEach { (label, tabs) ->
                     val shown = tabs.filter { it in visible }
                     if (shown.isEmpty()) return@forEach
@@ -244,27 +240,6 @@ fun visibleTabs(): List<Tab> {
             Tab.Discover -> !session.profile.kids
             Tab.Settings -> true
             else -> true
-        }
-    }
-}
-
-
-@Composable
-private fun NowPlayingItem(title: String, collapsed: Boolean, onClick: () -> Unit) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(10.dp)
-    Row(
-        Modifier.padding(bottom = 8.dp).then(if (collapsed) Modifier.size(48.dp) else Modifier.fillMaxWidth())
-            .onFocusChanged { focused = it.isFocused }.clip(shape)
-            .background(if (focused) DS.Invert else DS.Live.copy(alpha = 0.18f))
-            .clickable(onClick = onClick).padding(horizontal = if (collapsed) 0.dp else 10.dp, vertical = if (collapsed) 0.dp else 9.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start,
-    ) {
-        Icon(Icons.Default.PlayCircle, "Now playing", tint = if (focused) DS.OnInvert else DS.Live, modifier = Modifier.size(20.dp))
-        if (!collapsed) Column(Modifier.padding(start = 12.dp)) {
-            Text("Now playing", color = if (focused) DS.OnInvert else DS.Text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            Text(title, color = if (focused) DS.OnInvert.copy(alpha = 0.7f) else DS.TextDim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

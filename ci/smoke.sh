@@ -47,10 +47,9 @@ step "player: guide strip (down) and recent channels (left)"
 key 20; sleep 3; shot "$(printf %02d $n)-guide-strip"; n=$((n+1))
 key 4; sleep 1; key 21; sleep 2; shot "$(printf %02d $n)-recent"; n=$((n+1))
 key 4; sleep 1
-step "mini player (back)"
-key 4; sleep 2; shot "$(printf %02d $n)-mini-a"; n=$((n+1))
-key 4; sleep 6; shot "$(printf %02d $n)-mini"; n=$((n+1))
-key 4; sleep 2
+step "back from player stops it"
+key 4; sleep 2; shot "$(printf %02d $n)-back-a"; n=$((n+1))
+key 4; sleep 3; shot "$(printf %02d $n)-back"; n=$((n+1))
 
 step "game detail (sources tab)"
 start --es test_game nba; sleep 15

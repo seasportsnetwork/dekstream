@@ -50,7 +50,6 @@ import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Subtitles
@@ -194,7 +193,6 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     val rootFocus = remember { FocusRequester() }
     val playFocus = remember { FocusRequester() }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
-    val pip = app.inPip
 
     // Keep 60 s behind live so HLS live TV can be paused and rewound (TS can't seek, so nothing is kept).
     val player = remember {
@@ -216,7 +214,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         }
     }
 
-    // Pause when the app goes to the background (but keep playing in picture-in-picture).
+    // Pause when the app goes to the background .
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e ->
@@ -426,9 +424,9 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
     LaunchedEffect(browseIdx) { if (browseIdx != null) { delay(8_000); browseIdx = null } }
     // Frame rate matching: ask the TV for a refresh rate that fits the stream (60 for sports, 24 for movies).
     val fps = player.videoFormat?.frameRate?.takeIf { quality.isNotEmpty() } ?: -1f
-    LaunchedEffect(fps, com.dekstream.tv.data.PlaybackPrefs.matchFrameRate, pip) {
+    LaunchedEffect(fps, com.dekstream.tv.data.PlaybackPrefs.matchFrameRate) {
         val act = activity ?: return@LaunchedEffect
-        if (com.dekstream.tv.data.PlaybackPrefs.matchFrameRate && fps > 0 && !pip) matchFrameRate(act, fps) else resetFrameRate(act)
+        if (com.dekstream.tv.data.PlaybackPrefs.matchFrameRate && fps > 0) matchFrameRate(act, fps) else resetFrameRate(act)
     }
     DisposableEffect(Unit) { onDispose { activity?.let { resetFrameRate(it) } } }
 
@@ -439,14 +437,12 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
             showChannels -> showChannels = false
             showRecent -> showRecent = false
             browseIdx != null -> browseIdx = null
-            controls && !pip -> controls = false
-            current.isLive && com.dekstream.tv.data.PlaybackPrefs.backToMini && !pip -> { app.mini = current to zapList; onExit() }
+            controls -> controls = false
             else -> onExit()
         }
     }
     LaunchedEffect(Unit) { runCatching { rootFocus.requestFocus() } }
     LaunchedEffect(controls) { if (controls) { delay(50); runCatching { playFocus.requestFocus() } } }
-    LaunchedEffect(pip) { playerView?.resizeMode = if (pip) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeModes[resizeIdx].first }
 
     val canStartOver = current.isLive && current.channel?.hasArchive == true && nowProg != null
     val isCatchup = !current.isLive && current.channel != null
@@ -523,7 +519,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                     else -> false
                 }
             }
-            .pointerInput(Unit) { detectTapGestures(onTap = { if (controls) controls = false else showControls() }, onDoubleTap = { activity?.enterPip() }) },
+            .pointerInput(Unit) { detectTapGestures(onTap = { if (controls) controls = false else showControls() }) },
     ) {
         AndroidView(
             factory = { ctx ->
@@ -538,15 +534,13 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                 }
             },
             update = {
-                it.resizeMode = if (pip) AspectRatioFrameLayout.RESIZE_MODE_FIT else resizeModes[resizeIdx].first
+                it.resizeMode = resizeModes[resizeIdx].first
                 applyCaptionStyle(it)
             },
             modifier = Modifier.fillMaxSize(),
         )
 
         if (buffering && error == null) CircularProgressIndicator(color = DS.Accent, modifier = Modifier.align(Alignment.Center))
-
-        if (pip) return@Box
 
         error?.let {
             Text(
@@ -567,7 +561,7 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         }
 
         // Self-healing notice
-        if (!pip) ScoreTicker(Modifier.align(Alignment.TopEnd).padding(top = if (controls) 76.dp else 20.dp, end = 20.dp))
+        ScoreTicker(Modifier.align(Alignment.TopEnd).padding(top = if (controls) 76.dp else 20.dp, end = 20.dp))
 
         AnimatedVisibility(notice != null, enter = fadeIn(), exit = fadeOut(), modifier = Modifier.align(Alignment.TopCenter).padding(top = 24.dp)) {
             Row(
@@ -607,7 +601,6 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                             modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x55FFFFFF)).padding(horizontal = 10.dp, vertical = 4.dp))
                         HSpacer(8.dp)
                     }
-                    CtrlButton(Icons.Default.PictureInPictureAlt, "Picture-in-picture") { activity?.enterPip() }
                 }
 
                 // Bottom bar
@@ -974,42 +967,5 @@ private fun resetFrameRate(act: android.app.Activity) {
     runCatching {
         val lp = act.window.attributes
         if (lp.preferredDisplayModeId != 0) { lp.preferredDisplayModeId = 0; act.window.attributes = lp }
-    }
-}
-
-
-/** Live TV in a corner while browsing. OK = full screen again, hold OK = close. */
-@OptIn(UnstableApi::class)
-@Composable
-fun MiniPlayer(req: PlayRequest, modifier: Modifier, onExpand: () -> Unit, onClose: () -> Unit) {
-    val context = LocalContext.current
-    val repo = DekStreamApp.instance.repo
-    val player = remember(req.url) { buildPlayer(context, live = true, small = true) }
-    LaunchedEffect(req.url) {
-        val url = runCatching { repo?.provider?.resolve(req.url) ?: req.url }.getOrDefault(req.url)
-        player.setMediaItem(MediaItem.fromUri(url)); player.prepare(); player.playWhenReady = true
-    }
-    DisposableEffect(player) { onDispose { player.release() } }
-    val shape = RoundedCornerShape(14.dp)
-    Box(
-        modifier.width(400.dp).height(225.dp).focusRing(shape, 1.04f).clip(shape).background(Color.Black)
-            .border(1.dp, Color(0x33FFFFFF), shape).tvClickable(onClick = onExpand, onLongClick = onClose),
-    ) {
-        AndroidView(
-            factory = { ctx -> PlayerView(ctx).apply {
-                layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
-                useController = false; isFocusable = false; keepScreenOn = true
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-            } },
-            update = { it.player = player },
-            modifier = Modifier.fillMaxSize(),
-        )
-        Row(
-            Modifier.align(Alignment.BottomStart).fillMaxWidth().background(Color(0xB3000000)).padding(horizontal = 10.dp, vertical = 5.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(req.title, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, modifier = Modifier.weight(1f))
-            Text("OK full screen · hold to close", color = Color.White.copy(alpha = 0.6f), fontSize = 10.sp)
-        }
     }
 }

@@ -32,10 +32,6 @@ fun PlaybackSettingsScreen(state: AppState) {
             Choice("Browse the guide", P.upDown == "guide") { P.changeUpDown("guide") }
             Choice("Change channel", P.upDown == "zap") { P.changeUpDown("zap") }
         }
-        Option("Back while watching live TV", "Keep it playing in a corner while you browse, or stop it.") {
-            Choice("Mini player", P.backToMini) { P.changeBackToMini(true) }
-            Choice("Stop", !P.backToMini) { P.changeBackToMini(false) }
-        }
         Option("Best version of a channel", "When a channel is listed more than once (HD, FHD, 4K…), play the copy that has worked best for you.") {
             Choice("On", P.bestVersion) { P.changeBestVersion(true) }
             Choice("Off", !P.bestVersion) { P.changeBestVersion(false) }

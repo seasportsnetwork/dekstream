@@ -21,15 +21,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 
 import android.Manifest
-import android.app.PictureInPictureParams
 import android.content.Intent
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import android.util.Rational
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -133,24 +130,6 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_GAME_START = "game_start"
     }
 
-    /** Pressing Home while watching drops the video into a picture-in-picture window. */
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        if (DekStreamApp.instance.playerActive) enterPip()
-    }
-
-    fun enterPip() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (!packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) return
-        runCatching {
-            enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
-        }
-    }
-
-    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        DekStreamApp.instance.inPip = isInPictureInPictureMode
-    }
 }
 
 @Composable
@@ -295,7 +274,7 @@ private fun SignedIn() {
     var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var dimmed by remember { mutableStateOf(false) }
     var shift by remember { mutableIntStateOf(0) }
-    val videoOn = top is Route.Player || top is Route.Multiview || app.mini != null
+    val videoOn = top is Route.Player || top is Route.Multiview
     LaunchedEffect(lastInput, videoOn, pp.burnIn) {
         dimmed = false
         if (!pp.burnIn || videoOn) return@LaunchedEffect
@@ -303,9 +282,6 @@ private fun SignedIn() {
     }
     LaunchedEffect(pp.burnIn) { while (pp.burnIn) { kotlinx.coroutines.delay(3 * 60_000L); shift = (shift + 1) % 4 } }
     val offsets = listOf(0 to 0, 2 to 1, -1 to 2, 1 to -2)
-
-    // Back at the top level with the mini player showing: close it.
-    androidx.activity.compose.BackHandler(enabled = app.mini != null && state.stack.isEmpty()) { app.mini = null }
 
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { ev ->
@@ -340,13 +316,6 @@ private fun SignedIn() {
         is Route.EditSource -> SourceEditorScreen(existing = top.source, firstRun = false, onDone = { state.pop() }, onCancel = { state.pop() })
     }
     }
-    }
-    // Mini player: live TV keeps playing in a corner while you browse (Back from the player).
-    val mini = app.mini
-    if (mini != null && top !is Route.Player && top !is Route.Multiview) {
-        MiniPlayer(mini.first, Modifier.align(Alignment.BottomEnd).padding(24.dp),
-            onExpand = { app.mini = null; state.play(mini.first, mini.second) },
-            onClose = { app.mini = null })
     }
     SportsAlertCard(state) { a -> alertScope.launch { watchAlert(state, a) } }
     if (dimmed) Box(Modifier.fillMaxSize().background(Color(0xD9000000))) {

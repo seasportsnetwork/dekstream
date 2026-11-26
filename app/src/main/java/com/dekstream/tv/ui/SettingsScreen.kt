@@ -83,7 +83,7 @@ fun SettingsScreen(state: AppState) {
             NavRow(Icons.Default.Explore, "Addons & Discover", "Your Usenet Ultimate and other Stremio addons, TMDB key for Coming soon") {
                 state.push(Route.Addons)
             }
-            NavRow(Icons.Default.Tune, "Playback & screen", "Frame rate, guide while watching, mini player, start-up, captions, burn-in protection") {
+            NavRow(Icons.Default.Tune, "Playback & screen", "Frame rate, guide while watching, start-up, captions, burn-in protection") {
                 state.push(Route.PlaybackSettings)
             }
             NavRow(Icons.Default.Devices, "Sync with another device", "Copy playlists, profiles, favorites and settings between your Shield and tablet") {
