@@ -5,6 +5,9 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.key
 
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -248,14 +251,42 @@ fun SearchBarPill(onClick: () -> Unit, hint: String = "Channels, movies and show
     }
 }
 
-/** On a TV remote, OK on a text box opens the on-screen keyboard. */
+/** Whether a search box is taking typing. Pass `readOnly = !edit.editing` to the text field. */
+class TvEdit { var editing by androidx.compose.runtime.mutableStateOf(false) }
+
 @Composable
-fun Modifier.tvTextInput(): Modifier {
+fun rememberTvEdit(): TvEdit = androidx.compose.runtime.remember { TvEdit() }
+
+/**
+ * On a TV remote, OK on a text box opens the on-screen keyboard.
+ * With [edit], landing on the box (or scrolling past it) never opens the keyboard: it stays read-only
+ * until OK is pressed (or it's tapped on a touch screen), and goes back to read-only when focus leaves.
+ */
+@Composable
+fun Modifier.tvTextInput(edit: TvEdit? = null): Modifier {
     val kb = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    return this.onPreviewKeyEvent { e ->
+    if (edit != null) androidx.compose.runtime.LaunchedEffect(edit.editing) {
+        if (edit.editing) { kotlinx.coroutines.delay(80); kb?.show() }
+    }
+    var m = this
+    if (edit != null) {
+        m = m.onFocusChanged { if (!it.isFocused && edit.editing) edit.editing = false }
+            .pointerInput(edit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        if (ev.type == androidx.compose.ui.input.pointer.PointerEventType.Press) edit.editing = true
+                    }
+                }
+            }
+    }
+    return m.onPreviewKeyEvent { e ->
         val ok = e.key == androidx.compose.ui.input.key.Key.DirectionCenter || e.key == androidx.compose.ui.input.key.Key.Enter ||
             e.key == androidx.compose.ui.input.key.Key.NumPadEnter
-        if (ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) { kb?.show(); true } else ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown
+        if (ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) {
+            if (edit != null && !edit.editing) edit.editing = true else kb?.show()
+            true
+        } else ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown
     }
 }
 

@@ -51,7 +51,7 @@ fun SearchScreen(state: AppState) {
     menuFor?.let { c -> ChannelOptionsDialog(c, onDismiss = { menuFor = null }) }
     val channels by produceState<List<Channel>>(emptyList(), q) {
         delay(250) // debounce typing
-        value = runCatching { repo.searchChannels(q) }.getOrDefault(emptyList())
+        value = runCatching { repo.searchChannels(q).distinctBy { it.streamId } }.getOrDefault(emptyList())
     }
     // Guide programmes ("On TV"), using the whole-guide index.
     val guide by rememberLoad(repo.source.id) { repo.guideIndex() }
@@ -59,41 +59,34 @@ fun SearchScreen(state: AppState) {
         delay(300)
         val idx = guide.valueOrNull() ?: run { value = emptyList(); return@produceState }
         val byEpg = repo.allChannels().filter { it.epgChannelId != null }.groupBy { it.epgChannelId!!.lowercase() }
+        // The guide can list the same programme twice (two guide IDs for one channel): show it once.
         value = idx.search(q).mapNotNull { (id, e) -> byEpg[id]?.firstOrNull()?.let { it to e } }
+            .distinctBy { it.first.streamId to it.second.startMs }
     }
     val movies = repo.searchLoadedVod(q)
     val shows = repo.searchLoadedSeries(q)
 
-    // Voice search: Android's speech recognizer (the Shield remote's mic works here too).
+    // Voice search, inside DekTV: listens with the speech recognizer and shows its own panel.
+    // Falls back to Android's voice screen only if in-app listening isn't possible on this device.
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    val voice = androidx.activity.compose.rememberLauncherForActivityResult(
-        androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
-    ) { r ->
-        r.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { q = it }
-    }
-    val canVoice = remember {
-        ctx.packageManager.queryIntentActivities(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH), 0).isNotEmpty()
-    }
-    fun listen() {
-        runCatching {
-            voice.launch(android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Say a channel, show, team or movie"))
-        }
-    }
+    val voice = rememberVoiceSearch { q = it }
+    val canVoice = voice.available
+    fun listen() = voice.start()
     // Opened by the mic/search key or "voice" from elsewhere: start listening right away.
     LaunchedEffect(DekStreamApp.instance.voiceSearchRequested) {
         if (DekStreamApp.instance.voiceSearchRequested && canVoice) { DekStreamApp.instance.voiceSearchRequested = false; listen() }
     }
 
+    val edit = rememberTvEdit()
+    VoicePanel(voice)
     Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
         Row(Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
-                value = q, onValueChange = { q = it }, singleLine = true,
+                value = q, onValueChange = { q = it }, singleLine = true, readOnly = !edit.editing,
                 placeholder = { Text("Search channels, movies, series") },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent),
-                modifier = Modifier.tvTextInput().weight(1f),
+                modifier = Modifier.tvTextInput(edit).weight(1f),
             )
             if (canVoice) {
                 Spacer(Modifier.width(10.dp))

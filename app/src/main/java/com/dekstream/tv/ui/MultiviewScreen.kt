@@ -430,7 +430,8 @@ fun ChannelPickerDialog(onPick: (Channel) -> Unit, onDismiss: () -> Unit) {
         title = { Text("Choose a channel", color = DS.Text) },
         text = {
             Column {
-                OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Search channels") }, modifier = Modifier.tvTextInput().fillMaxWidth())
+                val edit = rememberTvEdit()
+                OutlinedTextField(q, { q = it }, singleLine = true, readOnly = !edit.editing, placeholder = { Text("Search channels") }, modifier = Modifier.tvTextInput(edit).fillMaxWidth())
                 LoadView(all) { list ->
                     val n = q.trim().lowercase()
                     val shown = (if (n.isEmpty()) list.filter { it.streamId in favs } + list.filter { it.streamId !in favs }

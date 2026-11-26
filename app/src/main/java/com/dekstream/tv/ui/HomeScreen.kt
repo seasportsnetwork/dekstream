@@ -53,6 +53,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -494,7 +497,6 @@ private fun ScoresPanel(
     var league by rememberSaveable { mutableStateOf<String?>(null) }
     val leagues = games.map { it.league }.distinctBy { it.key }
     val shown = games.filter { league == null || it.league.key == league }
-    val visible = shown.take(6)
     BentoCard(modifier) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -505,19 +507,28 @@ private fun ScoresPanel(
                 }
                 val shape = RoundedCornerShape(50)
                 Row(Modifier.focusRing(shape).clip(shape).tvClickable(onAll).padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (shown.size > visible.size) "+${shown.size - visible.size}" else "All", color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text("Sports", color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = DS.Accent, modifier = Modifier.size(16.dp))
                 }
             }
             Spacer(Modifier.height(10.dp))
             when {
-                visible.isNotEmpty() -> Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    visible.chunked(2).forEach { pair ->
-                        Row(Modifier.weight(1f, fill = false).heightIn(max = 76.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            pair.forEach { g -> MiniScore(g, hide, g.hasFavorite(favs), Modifier.weight(1f)) { onGame(g) } }
-                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                // Every game, two per row; scrolls inside the card when they don't all fit (focus moving down scrolls it).
+                shown.isNotEmpty() -> Box(Modifier.weight(1f)) {
+                    val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+                    LaunchedEffect(league) { grid.scrollToItem(0) }
+                    LazyVerticalGrid(
+                        GridCells.Fixed(2), state = grid, modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(4.dp),
+                    ) {
+                        gridItems(shown, key = { it.league.key + ":" + it.id }) { g ->
+                            MiniScore(g, hide, g.hasFavorite(favs), Modifier.fillMaxWidth().height(64.dp)) { onGame(g) }
                         }
                     }
+                    // Soft fade at the bottom while there are more games below.
+                    if (grid.canScrollForward) Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(28.dp)
+                        .background(Brush.verticalGradient(listOf(Color.Transparent, DS.Card))))
                 }
                 loading -> Text("Loading scores…", color = DS.TextDim, fontSize = 13.sp)
                 noLeagues -> Text("Choose the leagues you follow in Sports.", color = DS.TextDim, fontSize = 13.sp)
@@ -529,10 +540,16 @@ private fun ScoresPanel(
 
 @Composable
 private fun MiniTab(label: String, on: Boolean, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(50)
-    Text(label, color = if (on) DS.OnInvert else DS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.focusRing(shape, 1.05f).clip(shape).background(if (on) DS.Invert else Color.Transparent)
-            .tvClickable(onClick).padding(horizontal = 10.dp, vertical = 4.dp))
+    // Text tab: the selected league is bright with a short accent underline (no filled pill).
+    val shape = RoundedCornerShape(8.dp)
+    Column(
+        Modifier.focusRing(shape, 1.05f).clip(shape).tvClickable(onClick).padding(horizontal = 8.dp, vertical = 3.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(label, color = if (on) DS.Text else DS.TextDim, fontSize = 12.sp, fontWeight = if (on) FontWeight.Bold else FontWeight.Medium)
+        Box(Modifier.padding(top = 3.dp).width(14.dp).height(2.dp).clip(RoundedCornerShape(1.dp))
+            .background(if (on) DS.Accent else Color.Transparent))
+    }
 }
 
 /** Compact two-line score card. */

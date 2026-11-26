@@ -308,7 +308,8 @@ fun MatchGuideDialog(c: Channel, onDismiss: () -> Unit) {
         title = { Text("Match guide for ${c.name}", color = DS.Text, maxLines = 2) },
         text = {
             Column {
-                OutlinedTextField(q, { q = it }, singleLine = true, placeholder = { Text("Search guide channels") }, modifier = Modifier.tvTextInput().fillMaxWidth())
+                val edit = rememberTvEdit()
+                OutlinedTextField(q, { q = it }, singleLine = true, readOnly = !edit.editing, placeholder = { Text("Search guide channels") }, modifier = Modifier.tvTextInput(edit).fillMaxWidth())
                 when (val l = idx) {
                     is Load.Loading -> Text("Loading the guide…", color = DS.TextDim, modifier = Modifier.padding(top = 10.dp))
                     is Load.Err -> Text(l.message, color = DS.Live, modifier = Modifier.padding(top = 10.dp))
