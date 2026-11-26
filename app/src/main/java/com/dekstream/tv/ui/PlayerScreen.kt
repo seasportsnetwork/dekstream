@@ -214,12 +214,15 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
         }
     }
 
-    // Pause when the app goes to the background .
+    // In the background: live TV lets go of the stream (so a one-connection plan is free for other
+    // devices) and reconnects at the live edge on return; movies and series just pause.
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle) {
         val obs = LifecycleEventObserver { _, e ->
-            if (e == Lifecycle.Event.ON_STOP) player.pause()
-            if (e == Lifecycle.Event.ON_START && current.isLive) player.play()
+            if (e == Lifecycle.Event.ON_STOP) { if (current.isLive) player.stop() else player.pause() }
+            if (e == Lifecycle.Event.ON_START && current.isLive && player.mediaItemCount > 0) {
+                player.seekToDefaultPosition(); player.prepare(); player.play()
+            }
         }
         lifecycle.addObserver(obs)
         onDispose { lifecycle.removeObserver(obs) }
