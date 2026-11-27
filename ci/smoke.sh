@@ -39,6 +39,7 @@ done
 
 step "search: keyboard stays closed until OK"
 start --es test_tab Search; sleep 8
+key 22; sleep 3
 adb shell dumpsys input_method | grep -E "mInputShown" | head -1 > $OUT/kb-landed.txt
 shot "$(printf %02d $n)-search-landed"; n=$((n+1))
 adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -oE '<node[^>]*focused="true"[^>]*>' | sed -E 's/.*(text="[^"]*").*(class="[^"]*").*/\1 \2/' | head -3 > $OUT/kb-focus.txt
