@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Schedule
 import com.dekstream.tv.data.EpgIndex
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -636,10 +637,42 @@ private fun MiniScore(g: Game, hide: Boolean, mine: Boolean, modifier: Modifier,
         Column(horizontalAlignment = Alignment.End) {
             if (g.isLive) Box(Modifier.size(6.dp).clip(RoundedCornerShape(3.dp)).background(DS.Live))
             Text(when { g.isLive -> g.detail; g.state == "pre" -> fmtTime(g.startMs); else -> "Final" },
-                color = if (g.isLive) DS.Live else DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 2,
+                color = if (g.isLive) DS.Live else DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = if (g.broadcasts.isEmpty()) 2 else 1,
                 textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.widthIn(max = 70.dp))
+            g.broadcasts.firstOrNull()?.takeIf { it.isNotBlank() }?.let { NetworkBadge(it, Modifier.padding(top = 4.dp)) }
         }
     }
+}
+
+/** Where a game is on (ESPN, NBC, Prime Video, Netflix…): a small pill in the network's own colour. */
+@Composable
+private fun NetworkBadge(raw: String, modifier: Modifier = Modifier) {
+    val l = raw.lowercase()
+    val (label, color) = when {
+        "prime" in l || "amazon" in l -> "Prime Video" to Color(0xFF00A8E1)
+        "netflix" in l -> "Netflix" to Color(0xFFE50914)
+        "peacock" in l -> "Peacock" to Color(0xFF111111)
+        "apple" in l -> "Apple TV" to Color(0xFF111111)
+        "youtube" in l -> "YouTube" to Color(0xFFFF0000)
+        "paramount" in l -> "Paramount+" to Color(0xFF0064FF)
+        "max" == l || "hbo" in l -> "Max" to Color(0xFF002BE7)
+        "nfl net" in l -> "NFL Network" to Color(0xFF013369)
+        "nba tv" in l -> "NBA TV" to Color(0xFF1D428A)
+        "nhl net" in l -> "NHL Network" to Color(0xFF111111)
+        "mlb net" in l -> "MLB Network" to Color(0xFF0A2351)
+        "espn" in l || "secn" in l || "sec network" in l || "accn" in l || "acc network" in l -> raw.uppercase().take(10) to Color(0xFFCC0000)
+        "fox" in l || "fs1" in l || "fs2" in l || "big ten" in l || "btn" in l -> raw.uppercase().take(10) to Color(0xFF00305E)
+        "nbc" in l || "usa net" in l -> raw.uppercase().take(10) to Color(0xFF6A2C91)
+        "cbs" in l -> raw.uppercase().take(10) to Color(0xFF0B4DA2)
+        "abc" in l -> "ABC" to Color(0xFF1A1A1A)
+        "tnt" in l || "trutv" in l || "tbs" in l -> raw.uppercase().take(10) to Color(0xFF1F2A44)
+        else -> raw.take(12) to Color(0x33FFFFFF)
+    }
+    Text(
+        label, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.3.sp, maxLines = 1,
+        modifier = modifier.clip(RoundedCornerShape(5.dp)).background(color)
+            .border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
 
 /** A programme coming up on one of your channels; OK toggles a reminder. */
