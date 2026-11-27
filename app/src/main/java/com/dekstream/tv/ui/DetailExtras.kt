@@ -115,20 +115,20 @@ fun DetailExtras(
         if (writers.isNotEmpty()) CreditLine(if (writers.size == 1) "Writer" else "Writers", writers.joinToString(", "))
 
         if (trailers.isNotEmpty()) {
-            SectionLabel(if (trailers.size == 1) "Trailer" else "Trailers & teasers")
+            ExtrasLabel(if (trailers.size == 1) "Trailer" else "Trailers & teasers")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
                 items(trailers, key = { it.youtubeId }) { t -> TrailerCard(t) { playing = t } }
             }
         }
         if (cast.isNotEmpty()) {
-            SectionLabel("Cast")
+            ExtrasLabel("Cast")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(18.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
                 items(cast.take(20), key = { it.name + (it.character ?: "") }) { CastCircle(it) }
             }
         }
         val reviews = e?.reviews.orEmpty()
         if (reviews.isNotEmpty()) {
-            SectionLabel("Reviews")
+            ExtrasLabel("Reviews")
             LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(vertical = 4.dp)) {
                 items(reviews, key = { it.author + it.created }) { r -> ReviewCard(r) { reading = r } }
             }
@@ -154,7 +154,7 @@ private fun CreditLine(label: String, value: String) {
 }
 
 @Composable
-private fun SectionLabel(t: String) {
+private fun ExtrasLabel(t: String) {
     Text(t, color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 28.dp, bottom = 12.dp))
 }
 

@@ -197,6 +197,13 @@ fun HomeScreen(state: AppState) {
     val favChannels = favIds.distinct().mapNotNull { byId[it] }
     val lastChannel = recentIds.firstNotNullOfOrNull { byId[it] }
     val cont = if (showMovies || showSeries) progress.values.sortedByDescending { it.updatedAt } else emptyList()
+    val myList by app.prefs.myList.collectAsState()
+    // Long-press menus for posters and Continue watching cards.
+    var menuTitle by remember { mutableStateOf<com.dekstream.tv.data.SavedTitle?>(null) }
+    var menuCont by remember { mutableStateOf<ProgressEntry?>(null) }
+    menuTitle?.let { TitleMenu(it, state) { menuTitle = null } }
+    menuCont?.let { p -> ContinueMenu(p, onResume = { state.play(resumeRequest(p)) },
+        onStartOver = { state.play(resumeRequest(p).copy(startPositionMs = 0)) }) { menuCont = null } }
     val gameList = games.valueOrNull().orEmpty()
     val idx = guide
 
@@ -350,7 +357,20 @@ fun HomeScreen(state: AppState) {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
                         items(cont, key = { it.key }) { p ->
                             WideCard(p.title, p.subtitle, p.poster, p.fraction, 260.dp,
-                                onClick = { state.play(resumeRequest(p)) }, onLongClick = { app.prefs.removeProgress(p.key) }, onFocused = {})
+                                onClick = { state.play(resumeRequest(p)) }, onLongClick = { menuCont = p }, onFocused = {})
+                        }
+                    }
+                }
+            }
+            if (myList.isNotEmpty() && (showMovies || showSeries) && HomeLayout.shows("mylist")) {
+                item(key = "ml") { SectionHeader("My list", "Saved to watch later · hold OK to remove", modifier = Modifier.padding(horizontal = pad)) }
+                item(key = "mlr") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                        items(myList, key = { "ml" + it.kind + it.id }) { t ->
+                            PosterCard(com.dekstream.tv.data.Top10.displayName(t.name), t.poster, 140.dp,
+                                onClick = { if (t.kind == "movie") state.push(Route.MovieDetail(t.toVod())) else state.push(Route.SeriesDetail(t.toSeries())) },
+                                progress = if (t.kind == "movie") progress["vod:${t.id}"]?.fraction else null,
+                                onLongClick = { menuTitle = t })
                         }
                     }
                 }
@@ -374,7 +394,7 @@ fun HomeScreen(state: AppState) {
                 item(key = "top-mr") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(horizontal = pad)) {
                         itemsIndexed(t.items, key = { _, v -> "t" + v.streamId }) { i, v ->
-                            RankedTile(i + 1, v.name, v.poster, progress["vod:${v.streamId}"]?.fraction) { state.push(Route.MovieDetail(v)) }
+                            RankedTile(i + 1, v.name, v.poster, progress["vod:${v.streamId}"]?.fraction, { menuTitle = com.dekstream.tv.data.SavedTitle.of(v) }) { state.push(Route.MovieDetail(v)) }
                         }
                     }
                 }
@@ -384,7 +404,7 @@ fun HomeScreen(state: AppState) {
                 item(key = "top-sr") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(horizontal = pad)) {
                         itemsIndexed(t.items, key = { _, s -> "t" + s.seriesId }) { i, s ->
-                            RankedTile(i + 1, s.name, s.cover, null) { state.push(Route.SeriesDetail(s)) }
+                            RankedTile(i + 1, s.name, s.cover, null, { menuTitle = com.dekstream.tv.data.SavedTitle.of(s) }) { state.push(Route.SeriesDetail(s)) }
                         }
                     }
                 }
@@ -395,7 +415,7 @@ fun HomeScreen(state: AppState) {
                 }
                 item(key = "mr-${cat.id}") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list.distinctBy { it.streamId }, key = { it.streamId }) { v -> MoviePoster(v, state, progress) }
+                        items(list.distinctBy { it.streamId }, key = { it.streamId }) { v -> MoviePoster(v, state, progress) { menuTitle = com.dekstream.tv.data.SavedTitle.of(v) } }
                     }
                 }
             }
@@ -405,7 +425,7 @@ fun HomeScreen(state: AppState) {
                 }
                 item(key = "sr-${cat.id}") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s -> PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }) }
+                        items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s -> PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }, onLongClick = { menuTitle = com.dekstream.tv.data.SavedTitle.of(s) }) }
                     }
                 }
             }
@@ -782,7 +802,7 @@ private fun Top10Header(kind: String, thisWeek: Boolean, modifier: Modifier = Mo
  * overlapping the number a little. Clean title underneath the poster only.
  */
 @Composable
-private fun RankedTile(rank: Int, rawTitle: String, image: String?, progress: Float?, onClick: () -> Unit) {
+private fun RankedTile(rank: Int, rawTitle: String, image: String?, progress: Float?, onLongClick: () -> Unit, onClick: () -> Unit) {
     val posterW = 140.dp
     val posterH = 210.dp
     val numW = if (rank >= 10) 112.dp else 72.dp
@@ -805,7 +825,7 @@ private fun RankedTile(rank: Int, rawTitle: String, image: String?, progress: Fl
             }
             Box(
                 Modifier.align(Alignment.BottomEnd).width(posterW).height(posterH)
-                    .focusRing(shape, 1.06f).clip(shape).background(DS.Surface2).tvClickable(onClick),
+                    .focusRing(shape, 1.06f).clip(shape).background(DS.Surface2).tvClickable(onClick = onClick, onLongClick = onLongClick),
             ) {
                 if (image != null) AsyncImage(image, title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
                 else Text(title, color = DS.TextDim, fontSize = 13.sp, maxLines = 4, modifier = Modifier.align(Alignment.Center).padding(8.dp))
@@ -819,9 +839,9 @@ private fun RankedTile(rank: Int, rawTitle: String, image: String?, progress: Fl
 }
 
 @Composable
-private fun MoviePoster(v: Vod, state: AppState, progress: Map<String, ProgressEntry>) {
+private fun MoviePoster(v: Vod, state: AppState, progress: Map<String, ProgressEntry>, onLongClick: (() -> Unit)? = null) {
     PosterCard(
-        com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 140.dp, onClick = { state.push(Route.MovieDetail(v)) },
+        com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 140.dp, onClick = { state.push(Route.MovieDetail(v)) }, onLongClick = onLongClick,
         progress = progress["vod:${v.streamId}"]?.fraction,
     )
 }

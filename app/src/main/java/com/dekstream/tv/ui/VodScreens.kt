@@ -37,6 +37,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -112,6 +114,7 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState, onHer
                     items(list.distinctBy { it.seriesId }.take(40), key = { it.seriesId }) { s ->
                         PosterCard(
                             com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) },
+                            onLongClick = { state.titleMenu = com.dekstream.tv.data.SavedTitle.of(s) },
                             modifier = Modifier.onFocusChanged {
                                 if (it.hasFocus) onHero(HeroItem("s-${s.seriesId}", s.name, s.backdrop ?: s.cover,
                                     listOfNotNull(s.releaseDate?.take(4), s.genre, s.rating?.let { r -> "★ $r" }).joinToString("  ·  ").ifBlank { null },
@@ -140,6 +143,7 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState, onHer
                             com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 130.dp,
                             progress = progress["vod:${v.streamId}"]?.fraction,
                             onClick = { state.push(Route.MovieDetail(v)) },
+                            onLongClick = { state.titleMenu = com.dekstream.tv.data.SavedTitle.of(v) },
                             modifier = Modifier.onFocusChanged { focused = it.hasFocus },
                         )
                     }
@@ -174,7 +178,8 @@ fun VodCategoryScreen(cat: Category, isSeries: Boolean, state: AppState) {
                     horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s ->
-                        PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) })
+                        PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) },
+                            onLongClick = { state.titleMenu = com.dekstream.tv.data.SavedTitle.of(s) })
                     }
                 }
             }
@@ -187,7 +192,7 @@ fun VodCategoryScreen(cat: Category, isSeries: Boolean, state: AppState) {
                 ) {
                     items(list.distinctBy { it.streamId }, key = { it.streamId }) { v ->
                         PosterCard(com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 130.dp, progress = progress["vod:${v.streamId}"]?.fraction,
-                            onClick = { state.push(Route.MovieDetail(v)) })
+                            onClick = { state.push(Route.MovieDetail(v)) }, onLongClick = { state.titleMenu = com.dekstream.tv.data.SavedTitle.of(v) })
                     }
                 }
             }
@@ -268,6 +273,16 @@ fun MovieDetailScreen(v: Vod, state: AppState) {
                             Icon(Icons.Default.PlayArrow, null)
                             Text(if (resume != null) " Resume" else " Play")
                         }
+                        val myList by app.prefs.myList.collectAsState()
+                        val saved = myList.any { it.kind == "movie" && it.id == v.streamId }
+                        Button(
+                            onClick = { app.prefs.toggleMyList(com.dekstream.tv.data.SavedTitle.of(v)) },
+                            colors = ButtonDefaults.buttonColors(containerColor = DS.Surface2),
+                            modifier = Modifier.focusRing(RoundedCornerShape(24.dp)),
+                        ) {
+                            Icon(if (saved) Icons.Default.Check else Icons.Default.Add, null)
+                            Text(if (saved) " On my list" else " My list")
+                        }
                         if (resume != null) {
                             Button(
                                 onClick = { state.play(repo.vodRequest(v).copy(startPositionMs = 0)) },
@@ -323,6 +338,12 @@ fun SeriesDetailScreen(s: Series, state: AppState) {
             Column(Modifier.padding(horizontal = 20.dp)) {
                 val meta = listOfNotNull(s.releaseDate?.take(4), i?.genre ?: s.genre, s.rating?.let { "★ $it" }).joinToString("  ·  ")
                 if (meta.isNotBlank()) Text(meta, color = DS.TextDim, fontSize = 14.sp)
+                val myList by app.prefs.myList.collectAsState()
+                val saved = myList.any { it.kind == "series" && it.id == s.seriesId }
+                Row(Modifier.padding(top = 12.dp)) {
+                    PillButton(if (saved) "On my list" else "My list", { app.prefs.toggleMyList(com.dekstream.tv.data.SavedTitle.of(s)) },
+                        if (saved) Icons.Default.Check else Icons.Default.Add)
+                }
                 (smeta?.preview?.description?.takeIf { it.isNotBlank() } ?: i?.plot ?: s.plot)?.let { ExpandableText(it, modifier = Modifier.padding(top = 10.dp)) }
                 if (info is Load.Loading || info is Load.Err) LoadView(info) {}
                 val castNames = smeta?.cast?.takeIf { it.isNotEmpty() } ?: i?.cast?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }.orEmpty()

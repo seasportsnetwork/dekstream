@@ -269,6 +269,7 @@ private fun SignedIn() {
 
     // Sports heads-ups over every screen.
     SportsAlertWatcher()
+    state.titleMenu?.let { TitleMenu(it, state) { state.titleMenu = null } }
     val alertScope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(app.alertWatchRequested) {
         if (app.alertWatchRequested) { app.alertWatchRequested = false; app.alert?.let { watchAlert(state, it) } }

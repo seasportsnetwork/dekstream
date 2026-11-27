@@ -77,6 +77,8 @@ class AppState {
 
     /** A locked channel waiting for the parent PIN. */
     var lockedPending by mutableStateOf<Route.Player?>(null)
+    /** Long-press menu for a movie / series poster anywhere (shown by the root). */
+    var titleMenu by mutableStateOf<com.dekstream.tv.data.SavedTitle?>(null)
 
     fun play(req: PlayRequest, zapList: List<Channel> = emptyList()) {
         val prefs = com.dekstream.tv.DekStreamApp.instance.session?.prefs

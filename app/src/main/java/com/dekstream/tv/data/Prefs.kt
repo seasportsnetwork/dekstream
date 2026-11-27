@@ -11,6 +11,16 @@ import org.json.JSONObject
  * `sp` = this profile + this playlist (favourites, recents, resume points, stream settings).
  * `pp` = this profile across playlists (sports leagues, favourite teams).
  */
+/** A movie ("movie") or series ("series") saved to My list. */
+data class SavedTitle(val kind: String, val id: Int, val name: String, val poster: String?, val categoryId: String, val ext: String, val addedAt: Long = 0) {
+    fun toVod() = Vod(id, name, poster, categoryId, ext, null)
+    fun toSeries() = Series(id, name, poster, categoryId, null, null, null, null)
+    companion object {
+        fun of(v: Vod) = SavedTitle("movie", v.streamId, v.name, v.poster, v.categoryId, v.ext)
+        fun of(s: Series) = SavedTitle("series", s.seriesId, s.name, s.cover, s.categoryId, "")
+    }
+}
+
 class Prefs(context: Context, profileId: String, sourceId: String) {
     private val sp = context.getSharedPreferences("ds_${profileId}_$sourceId", Context.MODE_PRIVATE)
     private val pp = context.getSharedPreferences("dsp_$profileId", Context.MODE_PRIVATE)
@@ -212,6 +222,32 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
         _recent.value = l.take(20)
         saveIntList("recent", _recent.value)
     }
+
+    // --- My list (movies and series to watch later) ---
+    private val _myList = MutableStateFlow(loadMyList())
+    val myList: StateFlow<List<SavedTitle>> = _myList
+
+    fun inMyList(kind: String, id: Int) = _myList.value.any { it.kind == kind && it.id == id }
+
+    /** Adds it to the front of My list, or takes it off if it's already there. Returns true if now on the list. */
+    fun toggleMyList(t: SavedTitle): Boolean {
+        val l = _myList.value.toMutableList()
+        val had = l.removeAll { it.kind == t.kind && it.id == t.id }
+        if (!had) l.add(0, t.copy(addedAt = System.currentTimeMillis()))
+        _myList.value = l
+        val arr = JSONArray()
+        l.forEach { s -> arr.put(JSONObject().put("k", s.kind).put("id", s.id).put("n", s.name).put("p", s.poster ?: "")
+            .put("c", s.categoryId).put("e", s.ext).put("t", s.addedAt)) }
+        sp.edit().putString("mylist", arr.toString()).apply()
+        return !had
+    }
+
+    private fun loadMyList(): List<SavedTitle> = runCatching {
+        val a = JSONArray(sp.getString("mylist", "[]"))
+        (0 until a.length()).map { i -> a.getJSONObject(i).let { o ->
+            SavedTitle(o.getString("k"), o.getInt("id"), o.getString("n"), o.optString("p").ifBlank { null }, o.optString("c"), o.optString("e", "mp4"), o.optLong("t"))
+        } }
+    }.getOrDefault(emptyList())
 
     // --- Resume points ---
     private val _progress = MutableStateFlow(loadProgress())

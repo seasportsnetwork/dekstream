@@ -27,6 +27,7 @@ object HomeLayout {
         "upnext" to "Coming up on your channels",
         "categories" to "On now by category",
         "continue" to "Continue watching (movies & shows)",
+        "mylist" to "My list (movies & shows)",
         "moods" to "Genres",
         "movies" to "Movies on Home",
         "series" to "Series on Home",
@@ -36,6 +37,6 @@ object HomeLayout {
     fun shows(key: String) = key !in hidden
 
     /** "Live TV only": no movie or series rows, moods or VOD in the highlights. */
-    val liveOnlyHidden = setOf("moods", "movies", "series", "continue")
+    val liveOnlyHidden = setOf("moods", "movies", "series", "continue", "mylist")
     val isLiveOnly get() = hidden.containsAll(liveOnlyHidden)
 }

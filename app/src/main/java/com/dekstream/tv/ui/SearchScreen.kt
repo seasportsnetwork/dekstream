@@ -99,7 +99,7 @@ fun SearchScreen(state: AppState) {
                 item {
                     LazyRow(horizontalArrangement = rowSpacing) {
                         items(movies.distinctBy { it.streamId }, key = { it.streamId }) { v ->
-                            PosterCard(com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 120.dp, onClick = { state.push(Route.MovieDetail(v)) })
+                            PosterCard(com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 120.dp, onClick = { state.push(Route.MovieDetail(v)) }, onLongClick = { state.titleMenu = com.dekstream.tv.data.SavedTitle.of(v) })
                         }
                     }
                 }
@@ -109,7 +109,7 @@ fun SearchScreen(state: AppState) {
                 item {
                     LazyRow(horizontalArrangement = rowSpacing) {
                         items(shows.distinctBy { it.seriesId }, key = { it.seriesId }) { s ->
-                            PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 120.dp, onClick = { state.push(Route.SeriesDetail(s)) })
+                            PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 120.dp, onClick = { state.push(Route.SeriesDetail(s)) }, onLongClick = { state.titleMenu = com.dekstream.tv.data.SavedTitle.of(s) })
                         }
                     }
                 }
