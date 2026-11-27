@@ -18,6 +18,7 @@ step()  { echo "== $1"; echo "$1" >> $OUT/steps.txt; }
 adb install -r $APK || exit 1
 adb logcat -c
 adb shell wm size 1920x1080 >/dev/null 2>&1
+adb shell settings put secure show_ime_with_hard_keyboard 1 >/dev/null 2>&1
 adb shell setprop persist.sys.timezone America/New_York >/dev/null 2>&1
 adb shell cmd alarm set-timezone America/New_York >/dev/null 2>&1 || adb shell service call alarm 3 s16 America/New_York >/dev/null 2>&1
 
@@ -40,6 +41,7 @@ step "search: keyboard stays closed until OK"
 start --es test_tab Search; sleep 8
 adb shell dumpsys input_method | grep -E "mInputShown" | head -1 > $OUT/kb-landed.txt
 shot "$(printf %02d $n)-search-landed"; n=$((n+1))
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null 2>&1; adb shell cat /sdcard/ui.xml | grep -oE '<node[^>]*focused="true"[^>]*>' | sed -E 's/.*(text="[^"]*").*(class="[^"]*").*/\1 \2/' | head -3 > $OUT/kb-focus.txt
 key 23; sleep 3
 adb shell dumpsys input_method | grep -E "mInputShown" | head -1 > $OUT/kb-after-ok.txt
 shot "$(printf %02d $n)-search-ok"; n=$((n+1))
@@ -141,7 +143,7 @@ fail=0
   if grep -qE "ANR in $PKG|Application Not Responding: $PKG" $OUT/logcat.txt; then echo "FREEZE (ANR):"; grep -A8 -E "ANR in $PKG" $OUT/logcat.txt | head -30; fail=1; fi
   alive || { echo "App is not running at the end"; fail=1; }
   if grep -q "mInputShown=true" $OUT/kb-landed.txt 2>/dev/null; then echo "KEYBOARD opened on its own on Search"; fail=1; fi
-  echo "Keyboard: landed -> $(cat $OUT/kb-landed.txt 2>/dev/null | tr -d ' '), after OK -> $(cat $OUT/kb-after-ok.txt 2>/dev/null | tr -d ' ')"
+  echo "Keyboard: landed -> $(cat $OUT/kb-landed.txt 2>/dev/null | tr -d ' '), after OK -> $(cat $OUT/kb-after-ok.txt 2>/dev/null | tr -d ' '), focus -> $(cat $OUT/kb-focus.txt 2>/dev/null | tr '\n' ' ')"
   worst=$(grep -oE "Skipped [0-9]+ frames" $OUT/logcat.txt | grep -oE "[0-9]+" | sort -n | tail -1)
   echo "Worst UI stall: ${worst:-0} skipped frames (~$(( ${worst:-0} * 16 )) ms)"
   [ "${worst:-0}" -gt 300 ] && echo "WARNING: UI stalled more than ~5 s"
