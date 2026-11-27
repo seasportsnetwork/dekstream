@@ -61,8 +61,12 @@ object Appearance {
     var guideBgIdx by mutableIntStateOf(0)
     /** 0.55 (see-through panels) .. 1.0 (solid). */
     var panelAlpha by mutableFloatStateOf(1f)
-    /** Wide screens: sidebar shows icons only. */
-    var sidebarCollapsed by mutableStateOf(false)
+    /** Wide screens, side menu: 0 always open, 1 icons only, 2 auto-hide. */
+    var sidebarMode by mutableIntStateOf(0)
+    val sidebarModes = listOf("Always open", "Icons only", "Auto-hide")
+    var sidebarCollapsed: Boolean
+        get() = sidebarMode == 1
+        set(v) { sidebarMode = if (v) 1 else 0 }
 
     val palette get() = palettes.getOrElse(paletteIdx) { palettes[0] }
     val accent get() = accents.getOrElse(accentIdx) { accents[0] }.second

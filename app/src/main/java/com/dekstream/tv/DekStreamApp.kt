@@ -158,6 +158,7 @@ class DekStreamApp : Application() {
         Appearance.selectionIdx = s.selectionIdx
         Appearance.guideBgIdx = s.guideBgIdx
         Appearance.panelAlpha = s.panelAlpha
+        Appearance.sidebarMode = s.sidebarMode
     }
 
     /** Switch the current profile to another playlist. */

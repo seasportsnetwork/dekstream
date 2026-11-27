@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,7 +56,16 @@ fun Shell(state: AppState) {
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
         val wide = maxWidth >= 720.dp
         if (wide) {
-            Row(Modifier.fillMaxSize()) {
+            if (Appearance.sidebarMode == 2) {
+                // Auto-hide: the page keeps the slim strip's width; the opened menu slides over it.
+                Box(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxSize()) {
+                        Spacer(Modifier.width(RAIL_SLIM + 1.dp))
+                        Box(Modifier.weight(1f).fillMaxHeight()) { TabContent(state) }
+                    }
+                    SideRail(state, overlay = true)
+                }
+            } else Row(Modifier.fillMaxSize()) {
                 SideRail(state)
                 Box(Modifier.weight(1f).fillMaxHeight()) { TabContent(state) }
             }
@@ -93,87 +104,113 @@ private val sidebarGroups: List<Pair<String?, List<Tab>>> = listOf(
     "Manage" to listOf(Tab.Settings),
 )
 
+private val RAIL_SLIM = 76.dp
+private val RAIL_OPEN = 228.dp
+
 @Composable
-private fun SideRail(state: AppState) {
-    // Discover runs (near) full screen: the rail tucks away until you move onto it.
+private fun SideRail(state: AppState, overlay: Boolean = false) {
     var railFocused by remember { mutableStateOf(false) }
-    val collapsed = Appearance.sidebarCollapsed || (state.tab == Tab.Discover && !railFocused)
+    val open = when (Appearance.sidebarMode) {
+        1 -> false
+        2 -> railFocused
+        else -> !(state.tab == Tab.Discover && !railFocused) // Discover runs near full screen
+    }
+    // Smooth slide: width eases between the slim strip and the open menu; labels fade in after it widens.
+    val ease = androidx.compose.animation.core.FastOutSlowInEasing
+    val width by androidx.compose.animation.core.animateDpAsState(if (open) RAIL_OPEN else RAIL_SLIM,
+        androidx.compose.animation.core.tween(280, easing = ease), label = "rail")
+    val labels by androidx.compose.animation.core.animateFloatAsState(if (open) 1f else 0f,
+        androidx.compose.animation.core.tween(if (open) 220 else 120, delayMillis = if (open) 80 else 0, easing = ease), label = "labels")
+    val scrim by androidx.compose.animation.core.animateFloatAsState(if (overlay && open) 1f else 0f,
+        androidx.compose.animation.core.tween(280, easing = ease), label = "scrim")
     val visible = visibleTabs()
-    Row(Modifier.fillMaxHeight()) {
-        Column(
-            Modifier
-                .onFocusChanged { railFocused = it.hasFocus }
-                .width(if (collapsed) 76.dp else 228.dp)
-                .fillMaxHeight()
-                .background(if (DS.Light) Color(0xFFFAFAFB) else Appearance.palette.surface.copy(alpha = 0.55f))
-                .padding(horizontal = 12.dp, vertical = 14.dp),
-            horizontalAlignment = if (collapsed) Alignment.CenterHorizontally else Alignment.Start,
-        ) {
-            // Brand + collapse toggle
-            Row(Modifier.fillMaxWidth().padding(start = if (collapsed) 0.dp else 6.dp, bottom = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start) {
-                if (!collapsed) {
-                    BrandMark(26.dp, nameSize = 18)
-                    Spacer(Modifier.weight(1f))
-                }
-                val shape = RoundedCornerShape(10.dp)
-                Box(
-                    Modifier.size(32.dp).focusRing(shape).clip(shape).background(DS.Card).border(1.dp, DS.Line, shape)
-                        .clickable { Appearance.sidebarCollapsed = !collapsed },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(if (collapsed) Icons.AutoMirrored.Filled.KeyboardArrowRight else Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                        "Toggle sidebar", tint = DS.TextDim, modifier = Modifier.size(18.dp))
-                }
-            }
-            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                sidebarGroups.forEach { (label, tabs) ->
-                    val shown = tabs.filter { it in visible }
-                    if (shown.isEmpty()) return@forEach
-                    if (label != null) {
-                        if (collapsed) Box(Modifier.padding(vertical = 8.dp).align(Alignment.CenterHorizontally).width(24.dp).height(1.dp).background(DS.Line))
-                        else Text(label, color = DS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(start = 10.dp, top = 16.dp, bottom = 6.dp))
-                    }
-                    shown.forEach { t -> SidebarItem(t, state.tab == t, collapsed) { state.tab = t } }
-                }
-            }
-            // Profile card at the bottom
-            com.dekstream.tv.DekStreamApp.instance.session?.let { s ->
-                var focused by remember { mutableStateOf(false) }
-                val shape = RoundedCornerShape(12.dp)
-                Row(
-                    Modifier.fillMaxWidth().padding(top = 10.dp).onFocusChanged { focused = it.isFocused }
-                        .clip(shape).background(if (focused) DS.Invert else if (state.tab == Tab.Profile) DS.Card else Color.Transparent)
-                        .clickable { state.tab = Tab.Profile }.padding(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start,
-                ) {
-                    Avatar(s.profile, 34.dp)
-                    if (!collapsed) {
-                        Column(Modifier.padding(start = 10.dp).weight(1f)) {
-                            Text(s.profile.name, color = if (focused) DS.OnInvert else DS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            Text(s.source.name, color = if (focused) DS.OnInvert.copy(alpha = 0.7f) else DS.TextDim, fontSize = 12.sp, maxLines = 1,
-                                overflow = TextOverflow.Ellipsis)
+    Box(Modifier.fillMaxHeight()) {
+        // Soft shade over the page while the overlay menu is open.
+        if (scrim > 0.01f) Box(Modifier.fillMaxHeight().width(RAIL_OPEN + 220.dp).graphicsLayer { alpha = scrim }
+            .background(Brush.horizontalGradient(listOf(Color.Black.copy(alpha = 0.55f), Color.Transparent))))
+        Row(Modifier.fillMaxHeight()) {
+            Column(
+                Modifier
+                    .onFocusChanged { railFocused = it.hasFocus }
+                    .width(width)
+                    .fillMaxHeight()
+                    .background(
+                        if (DS.Light) Color(0xFFFAFAFB)
+                        else if (overlay) Appearance.palette.surface.copy(alpha = 0.97f)
+                        else Appearance.palette.surface.copy(alpha = 0.55f)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 14.dp),
+            ) {
+                // Brand + collapse toggle
+                Row(Modifier.fillMaxWidth().height(40.dp).padding(bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (labels > 0.5f) {
+                        Box(Modifier.graphicsLayer { alpha = (labels - 0.5f) * 2 }.padding(start = 6.dp)) { BrandMark(26.dp, nameSize = 18) }
+                        Spacer(Modifier.weight(1f))
+                    } else Spacer(Modifier.width(10.dp))
+                    if (Appearance.sidebarMode != 2) {
+                        val shape = RoundedCornerShape(10.dp)
+                        Box(
+                            Modifier.size(32.dp).focusRing(shape).clip(shape).background(DS.Card).border(1.dp, DS.Line, shape)
+                                .clickable { Appearance.sidebarCollapsed = open },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(if (open) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                "Toggle sidebar", tint = DS.TextDim, modifier = Modifier.size(18.dp))
                         }
-                        Icon(Icons.Default.UnfoldMore, null, tint = if (focused) DS.OnInvert else DS.TextDim, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                    sidebarGroups.forEach { (label, tabs) ->
+                        val shown = tabs.filter { it in visible }
+                        if (shown.isEmpty()) return@forEach
+                        if (label != null) {
+                            Box(Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.BottomStart) {
+                                if (labels > 0.5f) Text(label, color = DS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, softWrap = false,
+                                    modifier = Modifier.graphicsLayer { alpha = (labels - 0.5f) * 2 }.padding(start = 10.dp, bottom = 6.dp))
+                                else Box(Modifier.padding(start = 14.dp, bottom = 12.dp).width(24.dp).height(1.dp).background(DS.Line))
+                            }
+                        }
+                        shown.forEach { t -> SidebarItem(t, state.tab == t, labels) { state.tab = t } }
+                    }
+                }
+                // Profile card at the bottom
+                com.dekstream.tv.DekStreamApp.instance.session?.let { s ->
+                    var focused by remember { mutableStateOf(false) }
+                    val shape = RoundedCornerShape(12.dp)
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp).onFocusChanged { focused = it.isFocused }
+                            .clip(shape).background(if (focused) DS.Invert else if (state.tab == Tab.Profile) DS.Card else Color.Transparent)
+                            .clickable { state.tab = Tab.Profile }.padding(start = 9.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Avatar(s.profile, 34.dp)
+                        if (labels > 0.01f) Row(Modifier.weight(1f).graphicsLayer { alpha = labels }, verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                                Text(s.profile.name, color = if (focused) DS.OnInvert else DS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, softWrap = false)
+                                Text(s.source.name, color = if (focused) DS.OnInvert.copy(alpha = 0.7f) else DS.TextDim, fontSize = 12.sp, maxLines = 1,
+                                    softWrap = false, overflow = TextOverflow.Ellipsis)
+                            }
+                            Icon(Icons.Default.UnfoldMore, null, tint = if (focused) DS.OnInvert else DS.TextDim, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }
+            Box(Modifier.fillMaxHeight().width(1.dp).background(DS.Line))
         }
-        Box(Modifier.fillMaxHeight().width(1.dp).background(DS.Line))
     }
 }
 
 @Composable
-private fun SidebarItem(t: Tab, selected: Boolean, collapsed: Boolean, onClick: () -> Unit) {
+private fun SidebarItem(t: Tab, selected: Boolean, labels: Float, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
+    // Same layout open or closed (icon never moves), so the slide stays smooth; the label just fades.
     Row(
         Modifier
             .padding(vertical = 1.dp)
-            .then(if (collapsed) Modifier.size(48.dp) else Modifier.fillMaxWidth())
+            .fillMaxWidth()
+            .height(46.dp)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(
@@ -184,21 +221,20 @@ private fun SidebarItem(t: Tab, selected: Boolean, collapsed: Boolean, onClick: 
                 }
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = if (collapsed) 0.dp else 10.dp, vertical = if (collapsed) 0.dp else 9.dp),
+            .padding(start = 16.dp, end = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = if (collapsed) Arrangement.Center else Arrangement.Start,
     ) {
         Icon(
             t.icon, contentDescription = t.label,
             tint = when { focused -> DS.OnInvert; selected -> DS.Accent; else -> DS.TextDim },
             modifier = Modifier.size(20.dp),
         )
-        if (!collapsed) {
+        if (labels > 0.01f) {
             Text(
-                t.label, fontSize = 14.sp, maxLines = 1,
+                t.label, fontSize = 14.sp, maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
                 color = when { focused -> DS.OnInvert; else -> DS.Text },
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier.padding(start = 12.dp),
+                modifier = Modifier.padding(start = 14.dp).graphicsLayer { alpha = labels },
             )
         }
     }

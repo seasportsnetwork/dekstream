@@ -261,6 +261,15 @@ fun AppearanceScreen(state: AppState) {
             }
         }
 
+        SectionLabel("SIDE MENU")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Appearance.sidebarModes.forEachIndexed { i, name ->
+                CategoryChip(name, Appearance.sidebarMode == i) { Appearance.sidebarMode = i; st.sidebarMode = i }
+            }
+        }
+        Text("Auto-hide keeps a slim strip of icons; move left onto it and it slides open over the page.",
+            color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+
         SectionLabel("PANEL TRANSPARENCY")
         Slider(
             value = alpha, onValueChange = { alpha = it; Appearance.panelAlpha = it },

@@ -31,6 +31,10 @@ class ProfileSettings(context: Context, val profileId: String) {
     var panelAlpha: Float
         get() = pp.getFloat("alpha", 1f)
         set(v) = pp.edit().putFloat("alpha", v).apply()
+    /** Side menu: 0 always open, 1 icons only, 2 auto-hide (icons until you move onto it). */
+    var sidebarMode: Int
+        get() = pp.getInt("sidebarMode", 0)
+        set(v) = pp.edit().putInt("sidebarMode", v).apply()
 
     // ---- Content ----
     var showAdult: Boolean
