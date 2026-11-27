@@ -265,7 +265,7 @@ fun HomeScreen(state: AppState) {
                 }
                 val side: @Composable (Modifier) -> Unit = { m ->
                     ScoresPanel(gameList, upcoming.valueOrNull().orEmpty(), leagueKeys.mapNotNull { app.sports.league(it) }.filter { !it.racing }, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
-                        onGame = { g -> state.push(Route.GameDetail(g)) }, onAll = { state.tab = Tab.Sports })
+                        onGame = { g -> state.push(Route.GameDetail(g)) })
                 }
                 if (wide) {
                     Row(Modifier.fillMaxWidth().height(320.dp).padding(horizontal = pad).padding(top = 20.dp)) {
@@ -513,7 +513,7 @@ private fun WelcomeSpotlight(modifier: Modifier, onLive: () -> Unit, onSports: (
 @Composable
 private fun ScoresPanel(
     games: List<Game>, upcoming: Map<String, List<Game>>, followed: List<com.dekstream.tv.data.League>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
-    modifier: Modifier, onGame: (Game) -> Unit, onAll: () -> Unit,
+    modifier: Modifier, onGame: (Game) -> Unit,
 ) {
     var league by rememberSaveable { mutableStateOf<String?>(null) }
     // A tab for every league you follow (in your Sports order). Leagues playing today come first in All;
@@ -529,19 +529,31 @@ private fun ScoresPanel(
     }.let { all -> all.filter { !it.next } + all.filter { it.next } }
     val shown = sections.filter { league == null || it.l.key == league }
         .map { if (league == null && it.next) it.copy(list = it.list.take(2)) else it }
-    fun nextDay(g: Game): String = java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.US).format(java.util.Date(g.startMs))
+    // "Today", "Tomorrow", or "Sat, Nov 29" — every heading says which day its games are on.
+    fun dayOf(ms: Long): String {
+        val a = java.util.Calendar.getInstance(); val b = java.util.Calendar.getInstance().apply { timeInMillis = ms }
+        val days = ((b.apply { set(java.util.Calendar.HOUR_OF_DAY, 12) }.timeInMillis -
+            a.apply { set(java.util.Calendar.HOUR_OF_DAY, 12) }.timeInMillis) / 86_400_000L).toInt()
+        return when (days) {
+            0 -> "Today"; 1 -> "Tomorrow"
+            else -> java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.US).format(java.util.Date(ms))
+        }
+    }
     BentoCard(modifier) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Scores", color = DS.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-                LazyRow(Modifier.weight(1f).padding(start = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    item { MiniTab("All", league == null) { league = null } }
-                    items(leagues, key = { it.key }) { l -> MiniTab(l.short, league == l.key) { league = l.key } }
-                }
-                val shape = RoundedCornerShape(50)
-                Row(Modifier.focusRing(shape).clip(shape).tvClickable(onAll).padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Sports", color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = DS.Accent, modifier = Modifier.size(16.dp))
+                // League tabs scroll sideways (Right keeps going); a fade on the edge shows there are more.
+                Box(Modifier.weight(1f).padding(start = 10.dp)) {
+                    val tabs = androidx.compose.foundation.lazy.rememberLazyListState()
+                    LazyRow(state = tabs, horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(end = 24.dp)) {
+                        item { MiniTab("All", league == null) { league = null } }
+                        items(leagues, key = { it.key }) { l -> MiniTab(l.short, league == l.key) { league = l.key } }
+                    }
+                    if (tabs.canScrollForward) Box(Modifier.align(Alignment.CenterEnd).width(36.dp).height(30.dp)
+                        .background(Brush.horizontalGradient(listOf(Color.Transparent, DS.Card))))
+                    if (tabs.canScrollBackward) Box(Modifier.align(Alignment.CenterStart).width(24.dp).height(30.dp)
+                        .background(Brush.horizontalGradient(listOf(DS.Card, Color.Transparent))))
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -558,12 +570,17 @@ private fun ScoresPanel(
                     ) {
                         shown.forEach { sec ->
                             val key = sec.l.key
+                            val prefix = if (league == null) sec.l.short + " · " else ""
                             val label = when {
-                                !sec.next -> if (league == null) sec.l.short else null
-                                sec.list.isEmpty() -> (if (league == null) sec.l.short + " · " else "") + "No games this week"
-                                else -> (if (league == null) sec.l.short + " · " else "No games today · ") + "Next: " + nextDay(sec.list.first())
+                                !sec.next -> prefix + when {
+                                    sec.list.any { it.isLive } -> "Live now"
+                                    sec.list.all { it.state == "post" } -> "Final · " + dayOf(sec.list.first().startMs)
+                                    else -> dayOf(sec.list.first { it.state != "post" }.startMs)
+                                }
+                                sec.list.isEmpty() -> prefix + "No games this week"
+                                else -> prefix + (if (league == null) "" else "No games today · Next ") + dayOf(sec.list.first().startMs)
                             }
-                            if (label != null) item(key = "h:$key", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            item(key = "h:$key", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
                                 Text(label, color = DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                                     letterSpacing = 0.5.sp, modifier = Modifier.padding(start = 2.dp, top = 2.dp))
                             }
