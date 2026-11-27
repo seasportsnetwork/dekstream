@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
@@ -300,3 +301,30 @@ fun Modifier.tvTextInput(edit: TvEdit? = null): Modifier {
 
 fun Modifier.onFocusGained(block: () -> Unit): Modifier =
     this.onFocusChanged { if (it.hasFocus) block() }
+
+
+/** Round Back button for screens opened on top of the menu (Customize, settings pages, Discover titles). */
+@Composable
+fun BackPill(onBack: () -> Unit, modifier: Modifier = Modifier, onImage: Boolean = false) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        modifier.focusRing(shape, 1.05f).clip(shape)
+            .background(if (onImage) Color(0x66000000) else DS.Card)
+            .then(if (onImage) Modifier else Modifier.border(1.dp, DS.Line, shape))
+            .tvClickable(onBack).padding(start = 10.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = if (onImage) Color.White else DS.Text, modifier = Modifier.size(18.dp))
+        Text("Back", color = if (onImage) Color.White else DS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 6.dp))
+    }
+}
+
+/** Page title with a Back button in front of it. */
+@Composable
+fun ScreenTitle(title: String, onBack: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        BackPill(onBack)
+        Text(title, color = DS.Text, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 16.dp))
+    }
+}

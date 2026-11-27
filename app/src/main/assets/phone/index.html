@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<title>DekTV setup</title>
+<style>
+  :root { --bg:#0b0d12; --card:#151924; --line:#262c3b; --text:#f2f4f8; --dim:#9aa3b2; --accent:#ff4d5e; --ok:#3ccf8e; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:radial-gradient(1200px 500px at 50% -200px,#3a1730 0%,var(--bg) 60%); color:var(--text);
+         font:16px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; min-height:100vh; }
+  main { max-width:520px; margin:0 auto; padding:28px 20px 48px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:22px; }
+  .logo { width:34px; height:34px; border-radius:10px; background:linear-gradient(135deg,#ff4d5e,#b3245f);
+          display:grid; place-items:center; font-weight:900; font-size:15px; }
+  h1 { font-size:26px; margin:22px 0 4px; }
+  .sub { color:var(--dim); margin:0 0 20px; font-size:15px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; }
+  .seg { display:flex; gap:6px; background:#0f121a; padding:4px; border-radius:12px; margin-bottom:16px; }
+  .seg button { flex:1; border:0; background:transparent; color:var(--dim); padding:10px 6px; border-radius:9px; font-weight:600; font-size:14px; font-family:inherit; }
+  .seg button.on { background:var(--text); color:#111; }
+  label { display:block; font-size:13px; color:var(--dim); margin:12px 0 6px; }
+  input, textarea { width:100%; background:#0f121a; color:var(--text); border:1px solid var(--line); border-radius:12px;
+                    padding:13px 14px; font-size:16px; font-family:inherit; outline:none; }
+  input:focus, textarea:focus { border-color:var(--accent); }
+  textarea { min-height:120px; resize:vertical; }
+  .row { display:flex; gap:10px; } .row > div { flex:1; }
+  .send { margin-top:20px; width:100%; border:0; border-radius:14px; padding:15px; background:var(--accent); color:#fff;
+          font-weight:700; font-size:17px; font-family:inherit; }
+  .send:disabled { opacity:.5; }
+  .note { color:var(--dim); font-size:13px; margin-top:14px; display:flex; gap:8px; align-items:flex-start; }
+  .done { text-align:center; padding:36px 18px; }
+  .tick { width:64px; height:64px; border-radius:50%; background:rgba(60,207,142,.15); color:var(--ok); display:grid; place-items:center;
+          font-size:34px; margin:0 auto 14px; }
+  .err { color:var(--accent); font-size:14px; margin-top:12px; min-height:1em; }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><div class="logo">D</div>DekTV</div>
+
+  <section id="form">
+    <h1 id="title">Add your playlist</h1>
+    <p class="sub" id="sub">Type it here and it appears on <b>{{DEVICE}}</b>.</p>
+    <div class="card">
+      <div id="source">
+        <div class="seg" id="types">
+          <button data-t="XTREAM" class="on">Xtream</button>
+          <button data-t="M3U_URL">M3U link</button>
+          <button data-t="STALKER">MAC portal</button>
+        </div>
+        <label>Name (optional)</label>
+        <input id="name" placeholder="My IPTV" autocomplete="off">
+        <label id="urlLabel">Server URL</label>
+        <input id="url" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="http://example.com:8080">
+        <div id="xtream" class="row">
+          <div><label>Username</label><input id="user" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="off"></div>
+          <div><label>Password</label><input id="pass" type="password" autocomplete="off"></div>
+        </div>
+        <div id="m3u" class="hide">
+          <label>Guide (XMLTV) link, optional</label>
+          <input id="epg" inputmode="url" autocapitalize="none" autocorrect="off" spellcheck="false">
+        </div>
+        <div id="stalker" class="hide">
+          <label>MAC address (leave blank to use the one on the TV)</label>
+          <input id="mac" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="00:1A:79:XX:XX:XX">
+        </div>
+      </div>
+      <div id="addons" class="hide">
+        <label>Addon manifest links, one per line</label>
+        <textarea id="addonUrls" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://…/manifest.json"></textarea>
+      </div>
+      <button class="send" id="send">Send to TV</button>
+      <div class="err" id="err"></div>
+      <div class="note">🔒 <span>Encrypted on this phone with a one-time key from the QR code. Only your TV can read it, and nothing is stored online.</span></div>
+    </div>
+  </section>
+
+  <section id="ok" class="hide">
+    <div class="card done">
+      <div class="tick">✓</div>
+      <h1 style="margin-top:0">Sent</h1>
+      <p class="sub">Check <b>{{DEVICE}}</b>, review the details and press Save.</p>
+    </div>
+  </section>
+</main>
+<script src="/aesgcm.js"></script>
+<script>
+(function () {
+  var MODE = "{{MODE}}", key = (location.hash || "").slice(1), type = "XTREAM";
+  var $ = function (id) { return document.getElementById(id); };
+  // Keep the key out of history and anything this page might share.
+  try { history.replaceState(null, "", "/"); } catch (e) {}
+  if (MODE === "addons") {
+    $("source").classList.add("hide"); $("addons").classList.remove("hide");
+    $("title").textContent = "Add your addons";
+  }
+  if (!key) { $("err").textContent = "Scan the QR code on your TV again."; $("send").disabled = true; }
+
+  function show() {
+    $("xtream").classList.toggle("hide", type !== "XTREAM");
+    $("m3u").classList.toggle("hide", type !== "M3U_URL");
+    $("stalker").classList.toggle("hide", type !== "STALKER");
+    $("urlLabel").textContent = type === "M3U_URL" ? "Playlist link (.m3u / .m3u8)" : type === "STALKER" ? "Portal URL" : "Server URL";
+    $("url").placeholder = type === "M3U_URL" ? "http://example.com/get.php?…" : type === "STALKER" ? "http://portal.example.com/c/" : "http://example.com:8080";
+  }
+  Array.prototype.forEach.call(document.querySelectorAll("#types button"), function (b) {
+    b.onclick = function () {
+      type = b.getAttribute("data-t");
+      Array.prototype.forEach.call(document.querySelectorAll("#types button"), function (x) { x.classList.toggle("on", x === b); });
+      show();
+    };
+  });
+
+  $("send").onclick = function () {
+    $("err").textContent = "";
+    var data;
+    if (MODE === "addons") {
+      var urls = $("addonUrls").value.split(/\s+/).filter(function (u) { return /^https?:\/\//.test(u); });
+      if (!urls.length) { $("err").textContent = "Add at least one link."; return; }
+      data = { kind: "addons", urls: urls };
+    } else {
+      var url = $("url").value.trim();
+      if (url.length < 8) { $("err").textContent = "Enter the URL."; return; }
+      if (type === "XTREAM" && (!$("user").value.trim() || !$("pass").value)) { $("err").textContent = "Enter your username and password."; return; }
+      data = { kind: "source", type: type, name: $("name").value.trim(), url: url, user: $("user").value.trim(),
+               pass: $("pass").value, epg: $("epg").value.trim(), mac: $("mac").value.trim().toUpperCase() };
+    }
+    $("send").disabled = true; $("send").textContent = "Sending…";
+    var body;
+    try { body = dekSeal(key, JSON.stringify(data)); } catch (e) { $("err").textContent = "Couldn't encrypt on this phone."; $("send").disabled = false; return; }
+    fetch("/submit", { method: "POST", headers: { "Content-Type": "text/plain" }, body: body })
+      .then(function (r) {
+        if (r.ok) { $("form").classList.add("hide"); $("ok").classList.remove("hide"); return; }
+        throw new Error(r.status === 410 ? "This setup closed. Reopen it on the TV and scan again." : "The TV didn't accept it. Scan the QR code again.");
+      })
+      .catch(function (e) { $("err").textContent = e.message || "Couldn't reach the TV. Same Wi-Fi?"; $("send").disabled = false; $("send").textContent = "Send to TV"; });
+  };
+  show();
+})();
+</script>
+</body>
+</html>

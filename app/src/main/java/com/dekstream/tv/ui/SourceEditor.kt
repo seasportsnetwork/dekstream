@@ -5,6 +5,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.filled.Devices
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -159,6 +160,31 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
                 else Text(if (existing == null) "Add playlist" else "Edit playlist", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
             if (firstRun) Text("Add your IPTV service to get started.", color = DS.TextDim, fontSize = 15.sp)
+            if (firstRun) {
+                var copying by remember { mutableStateOf(false) }
+                PillButton("Copy from another device", { copying = true }, Icons.Default.Devices)
+                if (copying) androidx.compose.ui.window.Dialog(onDismissRequest = { copying = false },
+                    properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+                    Column(Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(22.dp)).background(DS.Surface2)
+                        .verticalScroll(rememberScrollState()).padding(24.dp)) {
+                        Text("Copy from another device", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                        Text("On the device that's already set up, open Settings › Sync › Send from this device.", color = DS.TextDim,
+                            fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+                        CopyFromDevicePanel()
+                        Row(Modifier.padding(top = 14.dp)) { PillButton("Close", { copying = false }) }
+                    }
+                }
+            }
+            if (type != SourceType.M3U_FILE) PhoneSetupCard("source", onReceived = { o ->
+                runCatching { SourceType.valueOf(o.optString("type")) }.getOrNull()?.let { type = it }
+                o.optString("name").takeIf { it.isNotBlank() }?.let { name = it }
+                o.optString("url").takeIf { it.isNotBlank() }?.let { url = it }
+                o.optString("user").takeIf { it.isNotBlank() }?.let { user = it }
+                o.optString("pass").takeIf { it.isNotBlank() }?.let { pass = it }
+                o.optString("epg").takeIf { it.isNotBlank() }?.let { epgUrl = it }
+                o.optString("mac").takeIf { it.isNotBlank() }?.let { mac = it }
+                error = null
+            }, Modifier.fillMaxWidth())
 
             Text("Type", color = DS.TextDim, fontSize = 13.sp)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

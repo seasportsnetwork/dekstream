@@ -21,7 +21,7 @@ import com.dekstream.tv.data.PlaybackPrefs as P
 @Composable
 fun PlaybackSettingsScreen(state: AppState) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp).widthIn(max = 760.dp)) {
-        Text("Playback & screen", color = DS.Text, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+        ScreenTitle("Playback & screen") { state.pop() }
 
         Option("Match frame rate", "The TV switches to the stream's frame rate (60 for sports, 24 for movies) for smoother motion. " +
             "The screen may go black for a second when the rate changes.") {
@@ -35,6 +35,11 @@ fun PlaybackSettingsScreen(state: AppState) {
         Option("Best version of a channel", "When a channel is listed more than once (HD, FHD, 4K…), play the copy that has worked best for you.") {
             Choice("On", P.bestVersion) { P.changeBestVersion(true) }
             Choice("Off", !P.bestVersion) { P.changeBestVersion(false) }
+        }
+        Option("Multiview", "Watch up to four channels at once. Adds Multiview to the menu and \"Watch several games\" to Sports. " +
+            "Most IPTV plans allow only one or two streams at a time.") {
+            Choice("Off", !P.multiview) { P.changeMultiview(false) }
+            Choice("On", P.multiview) { P.changeMultiview(true) }
         }
         Option("When DekTV opens", null) {
             Choice("Home", P.startOn == "home") { P.changeStartOn("home") }

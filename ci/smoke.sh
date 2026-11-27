@@ -99,9 +99,9 @@ line=$(adb logcat -d | grep "SYNC code=" | tail -1)
 scode=$(echo "$line" | sed -E 's/.*code=([0-9]+).*/\1/'); sport=$(echo "$line" | sed -E 's/.*port=([0-9]+).*/\1/')
 if [ -n "$scode" ] && [ -n "$sport" ]; then
   adb forward tcp:18787 tcp:$sport >/dev/null
-  curl -s -o $OUT/sync.json -w "%{http_code}" "http://127.0.0.1:18787/sync?code=$scode" > $OUT/sync-status.txt
-  curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:18787/sync?code=000000" > $OUT/sync-wrong.txt
-  echo "sync: right code -> $(cat $OUT/sync-status.txt), wrong code -> $(cat $OUT/sync-wrong.txt), $(wc -c < $OUT/sync.json) bytes" | tee $OUT/sync-result.txt
+  curl -s -o $OUT/sync.json -w "%{http_code}" "http://127.0.0.1:18787/hello" > $OUT/sync-status.txt
+  for i in 1 2 3 4 5 6; do curl -s -o /dev/null -w "%{http_code} " -X POST --data "bm90LWVuY3J5cHRlZC1ub3QtZW5jcnlwdGVkLW5vdC1lbmNyeXB0ZWQ" "http://127.0.0.1:18787/pull"; done > $OUT/sync-wrong.txt
+  echo "sync: hello -> $(cat $OUT/sync-status.txt) $(cat $OUT/sync.json), 6 bad requests -> $(cat $OUT/sync-wrong.txt)" | tee $OUT/sync-result.txt
   rm -f $OUT/sync.json
 else
   echo "sync: no code in log" | tee $OUT/sync-result.txt

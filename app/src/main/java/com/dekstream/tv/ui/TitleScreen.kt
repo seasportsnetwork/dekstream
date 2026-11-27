@@ -81,7 +81,8 @@ fun TitleScreen(initial: MetaPreview, state: AppState) {
         AsyncImage(m.background ?: m.poster, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(520.dp))
         Box(Modifier.fillMaxWidth().height(520.dp).background(Brush.horizontalGradient(listOf(Color(0xF20A0A0C), Color(0xB30A0A0C), Color(0x330A0A0C)))))
         Box(Modifier.fillMaxWidth().height(520.dp).background(Brush.verticalGradient(0.5f to Color.Transparent, 1f to Color(0xFF0A0A0C))))
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 40.dp, end = 40.dp, top = 40.dp, bottom = 40.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 40.dp, end = 40.dp, top = 24.dp, bottom = 40.dp)) {
+            item(key = "back") { BackPill({ state.pop() }, Modifier.padding(bottom = 12.dp), onImage = true) }
             item {
                 Column(Modifier.widthIn(max = 680.dp)) {
                     if (m.logo != null) AsyncImage(m.logo, m.name, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,

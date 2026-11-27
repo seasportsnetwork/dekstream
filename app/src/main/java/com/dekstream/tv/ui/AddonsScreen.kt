@@ -39,7 +39,7 @@ fun AddonsScreen(state: AppState) {
     var status by remember { mutableStateOf<String?>(null) }
     val colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent, focusedTextColor = DS.Text, unfocusedTextColor = DS.Text)
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp).widthIn(max = 760.dp)) {
-        Text("Addons & Discover", color = DS.Text, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+        ScreenTitle("Addons & Discover") { state.pop() }
         Text("Discover's catalog comes from Cinemeta (popular, new, top rated), TVmaze (new episodes, premieres) and, with a free key, TMDB " +
             "(movies coming soon, collections). Sources come from the Stremio addons you add here, like your Usenet Ultimate.",
             color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
@@ -51,6 +51,13 @@ fun AddonsScreen(state: AppState) {
         }
         Text("Addons only hides your IPTV provider's Movies and Series everywhere (sidebar, Home, Search). Discover is where you browse.",
             color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+        PhoneSetupCard("addons", onReceived = { o ->
+            val got = o.optJSONArray("urls")?.let { a -> (0 until a.length()).map { a.getString(it).trim() } }.orEmpty().filter { it.startsWith("http") }
+            if (got.isNotEmpty()) {
+                urls = (urls.split('\n').map { it.trim() }.filter { it.startsWith("http") } + got).distinct().joinToString("\n")
+                status = "Added ${got.size} link${if (got.size == 1) "" else "s"} from your phone. Press Save and test."
+            }
+        }, Modifier.fillMaxWidth().padding(top = 18.dp))
         OutlinedTextField(urls, { urls = it }, label = { Text("Addon manifest URLs (one per line), e.g. your Usenet Ultimate") }, colors = colors,
             modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 18.dp), minLines = 2, maxLines = 6)
         OutlinedTextField(tmdb, { tmdb = it }, label = { Text("TMDB API key (optional, for Coming soon movies)") }, singleLine = true, colors = colors,

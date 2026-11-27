@@ -202,7 +202,7 @@ fun SportsScreen(state: AppState) {
                         Icon(if (hide) Icons.Default.VisibilityOff else Icons.Default.Visibility, if (hide) "Show scores" else "Hide scores",
                             tint = if (hide) DS.Accent else DS.TextDim)
                     }
-                    IconButton(onClick = { selecting = !selecting; selected.clear() }, modifier = Modifier.focusRing()) {
+                    if (com.dekstream.tv.data.PlaybackPrefs.multiview) IconButton(onClick = { selecting = !selecting; selected.clear() }, modifier = Modifier.focusRing()) {
                         Icon(Icons.Default.GridView, "Watch several games", tint = if (selecting) DS.Accent else DS.TextDim)
                     }
                     IconButton(onClick = { refresh++ }, modifier = Modifier.focusRing()) { Icon(Icons.Default.Refresh, "Refresh", tint = DS.TextDim) }

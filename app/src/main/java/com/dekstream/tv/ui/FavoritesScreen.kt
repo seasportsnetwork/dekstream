@@ -212,7 +212,7 @@ fun HomeLayoutScreen(state: AppState) {
     val st = app.session?.settings ?: return
     fun set(h: Set<String>) { HomeLayout.hidden = h; st.homeHidden = h }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp).widthIn(max = 680.dp)) {
-        Text("Home screen", color = DS.Text, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
+        ScreenTitle("Home screen") { state.pop() }
         Text("Home is built for Live TV. Turn on Movies and Series here if you want them on Home too — they still have their own tabs either way.",
             color = DS.TextDim, fontSize = 14.sp)
         Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -20,6 +20,8 @@ object PlaybackPrefs {
     var startOn by mutableStateOf("home"); private set
     var bestVersion by mutableStateOf(true); private set
     var burnIn by mutableStateOf(true); private set
+    /** Multiview is opt-in: hidden from the menu and Sports until turned on here. */
+    var multiview by mutableStateOf(false); private set
 
     fun load(c: Context) {
         ctx = c.applicationContext
@@ -31,8 +33,10 @@ object PlaybackPrefs {
         startOn = sp.getString("startOn", "home")!!
         bestVersion = sp.getBoolean("best", true)
         burnIn = sp.getBoolean("burnIn", true)
+        multiview = sp.getBoolean("multiview", false)
     }
 
+    fun changeMultiview(v: Boolean) { multiview = v; sp.edit().putBoolean("multiview", v).apply() }
     fun changeMatchFrameRate(v: Boolean) { matchFrameRate = v; sp.edit().putBoolean("afr", v).apply() }
     fun changeUpDown(v: String) { upDown = v; sp.edit().putString("upDown", v).apply() }
     fun changeCaptionSize(v: Int) { captionSize = v; sp.edit().putInt("capSize", v).apply() }

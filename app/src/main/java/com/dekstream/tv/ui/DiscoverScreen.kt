@@ -378,7 +378,8 @@ fun FolderScreen(f: com.dekstream.tv.data.CFolder, state: AppState) {
     Box(Modifier.fillMaxSize().background(Color(0xFF0A0A0C))) {
         AsyncImage(f.backdrop ?: f.cover, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxWidth().height(420.dp))
         Box(Modifier.fillMaxWidth().height(420.dp).background(Brush.verticalGradient(0.3f to Color(0x330A0A0C), 1f to Color(0xFF0A0A0C))))
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 40.dp, bottom = 40.dp)) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 24.dp, bottom = 40.dp)) {
+            item(key = "back") { BackPill({ state.pop() }, Modifier.padding(start = 32.dp, bottom = 4.dp), onImage = true) }
             item {
                 Box(Modifier.fillMaxWidth().height(220.dp).padding(horizontal = 32.dp)) {
                     if (f.logo != null) AsyncImage(f.logo, f.title, contentScale = ContentScale.Fit, alignment = Alignment.BottomStart,

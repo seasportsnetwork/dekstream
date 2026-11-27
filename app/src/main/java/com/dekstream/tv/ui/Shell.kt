@@ -230,11 +230,13 @@ private fun BottomBar(state: AppState) {
 
 /** Tabs for this playlist and profile (e.g. no Movies tab if the playlist doesn't load movies). */
 fun visibleTabs(): List<Tab> {
-    val session = com.dekstream.tv.DekStreamApp.instance.session ?: return Tab.entries
+    val session = com.dekstream.tv.DekStreamApp.instance.session
+        ?: return Tab.entries.filter { it != Tab.Multiview || com.dekstream.tv.data.PlaybackPrefs.multiview }
     val src = session.source
     return Tab.entries.filter { t ->
         when (t) {
-            Tab.Live, Tab.Guide, Tab.Multiview, Tab.Favorites -> src.loadLive
+            Tab.Multiview -> src.loadLive && com.dekstream.tv.data.PlaybackPrefs.multiview
+            Tab.Live, Tab.Guide, Tab.Favorites -> src.loadLive
             Tab.Movies -> src.loadMovies && com.dekstream.tv.data.Stremio.iptvVod(com.dekstream.tv.DekStreamApp.instance)
             Tab.Series -> src.loadShows && com.dekstream.tv.data.Stremio.iptvVod(com.dekstream.tv.DekStreamApp.instance)
             Tab.Discover -> !session.profile.kids
