@@ -94,12 +94,7 @@ fun TitleScreen(initial: MetaPreview, state: AppState) {
                             .forEach { Text("$it   ", color = Color.White.copy(alpha = 0.8f), fontSize = 14.sp) }
                     }
                     if (m.genres.isNotEmpty()) Text(m.genres.joinToString(" • "), color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp))
-                    m.description?.let { Text(it, color = Color.White.copy(alpha = 0.9f), fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 14.dp)) }
-                    detail.valueOrNull()?.let { d ->
-                        if (d.cast.isNotEmpty()) Text("Starring: " + d.cast.take(5).joinToString(", "), color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp,
-                            modifier = Modifier.padding(top = 10.dp), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        d.director?.let { Text("Director: $it", color = Color.White.copy(alpha = 0.6f), fontSize = 13.sp) }
-                    }
+                    m.description?.let { ExpandableText(it, Color.White.copy(alpha = 0.9f), Modifier.padding(top = 14.dp)) }
                     Row(Modifier.padding(top = 20.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (m.upcoming || m.id.startsWith("tmdb:")) Text(if (detail is Load.Loading) "Loading…" else m.note ?: "Not available yet",
                             color = Color(0xFF46D369), fontSize = 16.sp, fontWeight = FontWeight.Bold)
@@ -117,6 +112,15 @@ fun TitleScreen(initial: MetaPreview, state: AppState) {
                             if (listed) Icons.Default.Check else Icons.Default.Add, onImage = true)
                     }
                 }
+            }
+            if (!m.upcoming) item(key = "extras") {
+                val d = detail.valueOrNull()
+                DetailExtras(
+                    if (m.type == "movie") "movie" else "series", d?.tmdbId ?: m.id.removePrefix("tmdb:").takeIf { m.id.startsWith("tmdb:") },
+                    m.id.takeIf { it.startsWith("tt") }, m.name, m.year?.take(4),
+                    BasicCredits(d?.cast.orEmpty(), d?.director, d?.writers.orEmpty(), d?.trailer),
+                    onAddKey = { state.push(Route.Addons) }, modifier = Modifier.padding(top = 4.dp).widthIn(max = 1400.dp),
+                )
             }
             if (detail is Load.Loading) item { CircularProgressIndicator(color = DS.Accent, modifier = Modifier.padding(top = 30.dp).size(28.dp)) }
             if (seasons.isNotEmpty()) {

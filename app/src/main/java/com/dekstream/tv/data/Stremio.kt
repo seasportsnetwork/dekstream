@@ -32,7 +32,15 @@ data class Episode2(val id: String, val season: Int, val episode: Int, val title
 data class MetaDetail(
     val preview: MetaPreview, val runtime: String?, val cast: List<String>, val director: String?,
     val episodes: List<Episode2>, val trailer: String?,
+    val writers: List<String> = emptyList(), val tmdbId: String? = null,
 )
+
+/** Cast, crew and reviews from TMDB (needs a key) for the movie / series page. */
+data class CastMember(val name: String, val character: String?, val photo: String?)
+data class Review(val author: String, val rating: Double?, val content: String, val created: String?)
+data class Trailer(val name: String, val youtubeId: String)
+data class TitleExtras(val cast: List<CastMember>, val directors: List<String>, val writers: List<String>, val reviews: List<Review>,
+    val trailers: List<Trailer> = emptyList())
 
 /** A playable source an addon offered. */
 data class StreamItem(val addon: String, val name: String, val title: String, val url: String) {
@@ -209,7 +217,8 @@ object Stremio {
         }.sortedWith(compareBy({ it.season }, { it.episode }))
         MetaDetail(p, m.optString("runtime").ifBlank { null }, m.optJSONArray("cast").strings().take(8),
             m.optJSONArray("director").strings().firstOrNull(), eps,
-            m.optJSONArray("trailers")?.optJSONObject(0)?.optString("source")?.ifBlank { null })
+            m.optJSONArray("trailers")?.optJSONObject(0)?.optString("source")?.ifBlank { null },
+            m.optJSONArray("writer").strings().take(4), m.optString("moviedb_id").ifBlank { null }?.takeIf { it != "0" })
     }.getOrNull()
 
     private fun parsePreview(o: JSONObject?, fallbackType: String): MetaPreview? {
@@ -310,6 +319,59 @@ object Stremio {
             .map { it.name to it.year?.take(4) }
         return false to list
     }
+
+    /**
+     * TMDB cast (with photos and characters), director/creators, writers and reviews. Finds the title by
+     * TMDB id, then IMDb id, then name + year. Null without a key or when nothing matches.
+     */
+    suspend fun extras(c: Context, type: String, tmdbId: String?, imdbId: String?, title: String, year: String?): TitleExtras? = runCatching {
+        val key = tmdbKey(c).ifBlank { return null }
+        val tv = type != "movie"
+        val kind = if (tv) "tv" else "movie"
+        val day = 24 * 3600_000L
+        val id = tmdbId?.filter(Char::isDigit)?.ifBlank { null }
+            ?: imdbId?.takeIf { it.startsWith("tt") }?.let { im ->
+                getJson("https://api.themoviedb.org/3/find/${enc(im)}?external_source=imdb_id&api_key=${enc(key)}", day)
+                    .optJSONArray(if (tv) "tv_results" else "movie_results")?.optJSONObject(0)?.optInt("id")?.takeIf { it > 0 }?.toString()
+            }
+            ?: run {
+                val q = enc(title)
+                val y = year?.take(4)?.let { if (tv) "&first_air_date_year=$it" else "&year=$it" } ?: ""
+                getJson("https://api.themoviedb.org/3/search/$kind?query=$q$y&api_key=${enc(key)}", day)
+                    .optJSONArray("results")?.optJSONObject(0)?.optInt("id")?.takeIf { it > 0 }?.toString()
+            } ?: return null
+        val credits = if (tv) "aggregate_credits" else "credits"
+        val o = getJson("https://api.themoviedb.org/3/$kind/$id?append_to_response=$credits,reviews,videos&api_key=${enc(key)}", day)
+        val cr = o.optJSONObject(credits)
+        val castArr = cr?.optJSONArray("cast")
+        val cast = if (castArr == null) emptyList() else (0 until minOf(castArr.length(), 20)).map { i ->
+            val p = castArr.getJSONObject(i)
+            val character = if (tv) p.optJSONArray("roles")?.optJSONObject(0)?.optString("character") else p.optString("character")
+            CastMember(p.optString("name"), character?.ifBlank { null },
+                p.optString("profile_path").ifBlank { null }?.let { "https://image.tmdb.org/t/p/w185$it" })
+        }.filter { it.name.isNotBlank() }
+        val crew = cr?.optJSONArray("crew")
+        fun crewWhere(test: (JSONObject) -> Boolean): List<String> = if (crew == null) emptyList()
+            else (0 until crew.length()).map { crew.getJSONObject(it) }.filter(test).map { it.optString("name") }.filter { it.isNotBlank() }.distinct()
+        val directors = if (tv) o.optJSONArray("created_by")?.let { a -> (0 until a.length()).map { a.getJSONObject(it).optString("name") } }.orEmpty()
+            else crewWhere { it.optString("job") == "Director" }
+        val writers = crewWhere { it.optString("department") == "Writing" && (it.optString("job") in setOf("Screenplay", "Writer", "Story", "Novel", "Teleplay") ||
+            it.optJSONArray("jobs")?.optJSONObject(0)?.optString("job") in setOf("Writer", "Screenplay", "Story", "Teleplay")) }.take(4)
+        val rv = o.optJSONObject("reviews")?.optJSONArray("results")
+        val reviews = if (rv == null) emptyList() else (0 until minOf(rv.length(), 12)).map { i ->
+            val r = rv.getJSONObject(i)
+            Review(r.optString("author").ifBlank { "Viewer" },
+                r.optJSONObject("author_details")?.optDouble("rating")?.takeIf { !it.isNaN() && it > 0 },
+                r.optString("content").replace(Regex("[*_#>]+"), "").replace(Regex("\\s+"), " ").trim(),
+                r.optString("created_at").take(10).ifBlank { null })
+        }.filter { it.content.isNotBlank() }
+        val vids = o.optJSONObject("videos")?.optJSONArray("results")
+        val trailers = if (vids == null) emptyList() else (0 until vids.length()).map { vids.getJSONObject(it) }
+            .filter { it.optString("site") == "YouTube" && it.optString("type") in setOf("Trailer", "Teaser") && it.optString("key").isNotBlank() }
+            .sortedWith(compareBy({ if (it.optString("type") == "Trailer") 0 else 1 }, { if (it.optBoolean("official")) 0 else 1 }))
+            .map { Trailer(it.optString("name").ifBlank { "Trailer" }, it.optString("key")) }.distinctBy { it.youtubeId }.take(6)
+        TitleExtras(cast, directors.filter { it.isNotBlank() }.take(3), writers, reviews, trailers)
+    }.getOrNull()
 
     // ---------------- helpers ----------------
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { optString(it).ifBlank { null } }

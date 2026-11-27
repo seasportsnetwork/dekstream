@@ -60,7 +60,7 @@ fun AddonsScreen(state: AppState) {
         }, Modifier.fillMaxWidth().padding(top = 18.dp))
         OutlinedTextField(urls, { urls = it }, label = { Text("Addon manifest URLs (one per line), e.g. your Usenet Ultimate") }, colors = colors,
             modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 18.dp), minLines = 2, maxLines = 6)
-        OutlinedTextField(tmdb, { tmdb = it }, label = { Text("TMDB API key (optional, for Coming soon movies)") }, singleLine = true, colors = colors,
+        OutlinedTextField(tmdb, { tmdb = it }, label = { Text("TMDB API key (optional: cast photos, trailers, reviews, Top 10 this week, Coming soon)") }, singleLine = true, colors = colors,
             modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 12.dp))
         Text("Get one free at themoviedb.org → Settings → API.", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
         OutlinedTextField(coll, { coll = it }, label = { Text("Collections file (Nuvio collection JSON URL)") }, singleLine = true, colors = colors,

@@ -281,17 +281,18 @@ fun MovieDetailScreen(v: Vod, state: AppState) {
                         Text("$left min left", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(bottom = 10.dp))
                     }
                     val plot = p?.description?.takeIf { it.isNotBlank() } ?: i?.plot
-                    plot?.let { Text(it, color = DS.Text, fontSize = 15.sp, lineHeight = 22.sp, maxLines = 6, overflow = TextOverflow.Ellipsis) }
-                    val cast = meta?.cast?.takeIf { it.isNotEmpty() }?.take(8)?.joinToString(", ") ?: i?.cast
-                    val director = meta?.director ?: i?.director
-                    if (!cast.isNullOrBlank()) Row(Modifier.padding(top = 14.dp)) {
-                        Text("Starring  ", color = DS.TextDim, fontSize = 13.sp); Text(cast, color = DS.Text, fontSize = 13.sp)
-                    }
-                    if (!director.isNullOrBlank()) Row(Modifier.padding(top = 4.dp)) {
-                        Text("Director  ", color = DS.TextDim, fontSize = 13.sp); Text(director, color = DS.Text, fontSize = 13.sp)
-                    }
+                    plot?.let { ExpandableText(it) }
                     if (info is Load.Loading && meta == null) LoadView(info) {}
                 }
+            }
+            item(key = "extras") {
+                val castNames = meta?.cast?.takeIf { it.isNotEmpty() } ?: i?.cast?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }.orEmpty()
+                DetailExtras(
+                    "movie", meta?.tmdbId, p?.id?.takeIf { it.startsWith("tt") }, p?.name ?: com.dekstream.tv.data.Top10.displayName(v.name),
+                    p?.year ?: i?.releaseDate?.take(4),
+                    BasicCredits(castNames, meta?.director ?: i?.director, meta?.writers.orEmpty(), meta?.trailer),
+                    onAddKey = { state.push(Route.Addons) }, modifier = Modifier.padding(top = 8.dp),
+                )
             }
         }
     }
@@ -302,6 +303,8 @@ fun SeriesDetailScreen(s: Series, state: AppState) {
     val app = DekStreamApp.instance
     val repo = app.repo ?: return
     val info by rememberLoad(s.seriesId) { repo.seriesInfo(s) }
+    var smeta by remember(s.seriesId) { mutableStateOf<com.dekstream.tv.data.MetaDetail?>(null) }
+    LaunchedEffect(s.seriesId) { smeta = runCatching { com.dekstream.tv.data.Stremio.lookup("series", s.name) }.getOrNull() }
     val progress by app.prefs.progress.collectAsState()
     var season by rememberSaveable { mutableIntStateOf(-1) }
     BackHandler { state.pop() }
@@ -320,8 +323,15 @@ fun SeriesDetailScreen(s: Series, state: AppState) {
             Column(Modifier.padding(horizontal = 20.dp)) {
                 val meta = listOfNotNull(s.releaseDate?.take(4), i?.genre ?: s.genre, s.rating?.let { "★ $it" }).joinToString("  ·  ")
                 if (meta.isNotBlank()) Text(meta, color = DS.TextDim, fontSize = 14.sp)
-                (i?.plot ?: s.plot)?.let { Text(it, color = DS.Text, fontSize = 15.sp, lineHeight = 22.sp, modifier = Modifier.padding(top = 10.dp)) }
+                (smeta?.preview?.description?.takeIf { it.isNotBlank() } ?: i?.plot ?: s.plot)?.let { ExpandableText(it, modifier = Modifier.padding(top = 10.dp)) }
                 if (info is Load.Loading || info is Load.Err) LoadView(info) {}
+                val castNames = smeta?.cast?.takeIf { it.isNotEmpty() } ?: i?.cast?.split(',')?.map { it.trim() }?.filter { it.isNotBlank() }.orEmpty()
+                DetailExtras(
+                    "series", smeta?.tmdbId, smeta?.preview?.id?.takeIf { it.startsWith("tt") },
+                    smeta?.preview?.name ?: com.dekstream.tv.data.Top10.displayName(s.name), smeta?.preview?.year?.take(4) ?: s.releaseDate?.take(4),
+                    BasicCredits(castNames, smeta?.director, smeta?.writers.orEmpty(), smeta?.trailer),
+                    onAddKey = { state.push(Route.Addons) }, modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
         if (i != null && i.seasons.isNotEmpty()) {
