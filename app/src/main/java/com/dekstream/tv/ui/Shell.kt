@@ -237,9 +237,9 @@ fun visibleTabs(): List<Tab> {
         when (t) {
             Tab.Multiview -> src.loadLive && com.dekstream.tv.data.PlaybackPrefs.multiview
             Tab.Live, Tab.Guide, Tab.Favorites -> src.loadLive
-            Tab.Movies -> src.loadMovies && com.dekstream.tv.data.Stremio.iptvVod(com.dekstream.tv.DekStreamApp.instance)
-            Tab.Series -> src.loadShows && com.dekstream.tv.data.Stremio.iptvVod(com.dekstream.tv.DekStreamApp.instance)
-            Tab.Discover -> !session.profile.kids
+            Tab.Movies -> src.loadMovies
+            Tab.Series -> src.loadShows
+            Tab.Discover -> false // addons are off for now; Discover's titles play through addons
             Tab.Settings -> true
             else -> true
         }

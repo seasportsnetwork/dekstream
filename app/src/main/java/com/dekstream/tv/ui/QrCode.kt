@@ -74,7 +74,8 @@ fun PhoneSetupCard(mode: String, onReceived: (JSONObject) -> Unit, modifier: Mod
                     Icon(Icons.Default.PhoneAndroid, null, tint = DS.Accent, modifier = Modifier.size(20.dp))
                     Text("  Type it on your phone", color = DS.Text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
                 }
-                Text(if (mode == "addons") "Scan with your phone's camera, paste your addon links, and tap Send. They'll show up here."
+                Text(if (mode == "tmdb") "Scan with your phone's camera, paste your TMDB key, and tap Send. DekTV saves and checks it."
+                    else if (mode == "addons") "Scan with your phone's camera, paste your addon links, and tap Send. They'll show up here."
                     else "Scan with your phone's camera, fill in your playlist, and tap Send. It fills in this screen for you.",
                     color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp))
                 PhoneLink.status?.let { Text(it, color = DS.Accent, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 8.dp)) }

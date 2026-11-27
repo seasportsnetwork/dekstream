@@ -68,6 +68,10 @@
           <input id="mac" autocapitalize="characters" autocorrect="off" spellcheck="false" placeholder="00:1A:79:XX:XX:XX">
         </div>
       </div>
+      <div id="tmdb" class="hide">
+        <label>TMDB API key or Read Access Token</label>
+        <textarea id="tmdbKey" style="min-height:90px" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="Paste it from themoviedb.org → Settings → API"></textarea>
+      </div>
       <div id="addons" class="hide">
         <label>Addon manifest links, one per line</label>
         <textarea id="addonUrls" autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="https://…/manifest.json"></textarea>
@@ -82,7 +86,7 @@
     <div class="card done">
       <div class="tick">✓</div>
       <h1 style="margin-top:0">Sent</h1>
-      <p class="sub">Check <b>{{DEVICE}}</b>, review the details and press Save.</p>
+      <p class="sub" id="okSub">Check <b>{{DEVICE}}</b>, review the details and press Save.</p>
     </div>
   </section>
 </main>
@@ -93,6 +97,10 @@
   var $ = function (id) { return document.getElementById(id); };
   // Keep the key out of history and anything this page might share.
   try { history.replaceState(null, "", "/"); } catch (e) {}
+  if (MODE === "tmdb") {
+    $("source").classList.add("hide"); $("tmdb").classList.remove("hide");
+    $("title").textContent = "Add your TMDB key";
+  }
   if (MODE === "addons") {
     $("source").classList.add("hide"); $("addons").classList.remove("hide");
     $("title").textContent = "Add your addons";
@@ -117,7 +125,11 @@
   $("send").onclick = function () {
     $("err").textContent = "";
     var data;
-    if (MODE === "addons") {
+    if (MODE === "tmdb") {
+      var k = $("tmdbKey").value.replace(/\s+/g, "");
+      if (k.length < 20) { $("err").textContent = "Paste the whole key."; return; }
+      data = { kind: "tmdb", key: k };
+    } else if (MODE === "addons") {
       var urls = $("addonUrls").value.split(/\s+/).filter(function (u) { return /^https?:\/\//.test(u); });
       if (!urls.length) { $("err").textContent = "Add at least one link."; return; }
       data = { kind: "addons", urls: urls };

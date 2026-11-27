@@ -27,61 +27,33 @@ import androidx.compose.ui.unit.sp
 import com.dekstream.tv.data.Stremio
 import kotlinx.coroutines.launch
 
-/** Settings > Addons & Discover: Stremio addon URLs (streams) and an optional TMDB key (coming-soon movies). */
+/** Settings > Movie & show details: the TMDB key that powers cast photos, trailers, reviews and Top 10 "this week". */
 @Composable
 fun AddonsScreen(state: AppState) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var urls by remember { mutableStateOf(Stremio.addonUrls(ctx).joinToString("\n")) }
     var tmdb by remember { mutableStateOf(Stremio.tmdbKey(ctx)) }
-    var coll by remember { mutableStateOf(Stremio.collectionsUrl(ctx)) }
-    var iptvVod by remember { mutableStateOf(Stremio.iptvVod(ctx)) }
     var status by remember { mutableStateOf<String?>(null) }
     val colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = DS.Accent, cursorColor = DS.Accent, focusedTextColor = DS.Text, unfocusedTextColor = DS.Text)
+    fun saveAndTest(key: String) {
+        Stremio.setTmdbKey(ctx, key)
+        if (key.isBlank()) { status = "Key removed. Details fall back to your playlist's info."; return }
+        status = "Checking…"
+        scope.launch { status = if (Stremio.testTmdbKey(key)) "✓ Key works. Cast photos, trailers and reviews are on." else "✗ TMDB didn't accept that key. Use the API Key (v3), not the long read token." }
+    }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp).widthIn(max = 760.dp)) {
-        ScreenTitle("Addons & Discover") { state.pop() }
-        Text("Discover's catalog comes from Cinemeta (popular, new, top rated), TVmaze (new episodes, premieres) and, with a free key, TMDB " +
-            "(movies coming soon, collections). Sources come from the Stremio addons you add here, like your Usenet Ultimate.",
-            color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
-        Text("Movies & series", color = DS.Text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 18.dp))
-        Row(Modifier.padding(top = 8.dp)) {
-            Pill("From IPTV and addons", iptvVod, onClick = { iptvVod = true; Stremio.setIptvVod(ctx, true) })
-            androidx.compose.foundation.layout.Spacer(Modifier.padding(4.dp))
-            Pill("Addons only", !iptvVod, onClick = { iptvVod = false; Stremio.setIptvVod(ctx, false) })
-        }
-        Text("Addons only hides your IPTV provider's Movies and Series everywhere (sidebar, Home, Search). Discover is where you browse.",
-            color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-        PhoneSetupCard("addons", onReceived = { o ->
-            val got = o.optJSONArray("urls")?.let { a -> (0 until a.length()).map { a.getString(it).trim() } }.orEmpty().filter { it.startsWith("http") }
-            if (got.isNotEmpty()) {
-                urls = (urls.split('\n').map { it.trim() }.filter { it.startsWith("http") } + got).distinct().joinToString("\n")
-                status = "Added ${got.size} link${if (got.size == 1) "" else "s"} from your phone. Press Save and test."
-            }
+        ScreenTitle("Movie & show details") { state.pop() }
+        Text("A free TMDB key adds cast photos and character names, writers, trailers, reviews and \"Top 10 this week\" to your playlist's movies and series. " +
+            "Without one, DekTV uses what your playlist provides.", color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+        PhoneSetupCard("tmdb", onReceived = { o ->
+            o.optString("key").trim().takeIf { it.isNotBlank() }?.let { tmdb = it; saveAndTest(it) }
         }, Modifier.fillMaxWidth().padding(top = 18.dp))
-        OutlinedTextField(urls, { urls = it }, label = { Text("Addon manifest URLs (one per line), e.g. your Usenet Ultimate") }, colors = colors,
-            modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 18.dp), minLines = 2, maxLines = 6)
-        OutlinedTextField(tmdb, { tmdb = it }, label = { Text("TMDB API key (optional: cast photos, trailers, reviews, Top 10 this week, Coming soon)") }, singleLine = true, colors = colors,
-            modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 12.dp))
-        Text("Get one free at themoviedb.org → Settings → API.", color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-        OutlinedTextField(coll, { coll = it }, label = { Text("Collections file (Nuvio collection JSON URL)") }, singleLine = true, colors = colors,
-            modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 12.dp))
-        Row(Modifier.padding(top = 8.dp)) {
-            Pill("Use Kaptain's Collection", coll == Stremio.KAPTAIN, onClick = { coll = Stremio.KAPTAIN })
-        }
+        OutlinedTextField(tmdb, { tmdb = it.trim() }, label = { Text("TMDB API key") }, singleLine = true, colors = colors,
+            modifier = Modifier.tvTextInput().fillMaxWidth().padding(top = 16.dp))
+        Text("Get one free: themoviedb.org → sign up → Settings → API → copy the \"API Key\".", color = DS.TextDim, fontSize = 12.sp,
+            modifier = Modifier.padding(top = 4.dp))
         Row(Modifier.padding(top = 16.dp)) {
-            PillButton("Save and test", {
-                Stremio.setAddonUrls(ctx, urls.split('\n').map { it.trim() }.filter { it.startsWith("http") })
-                Stremio.setTmdbKey(ctx, tmdb)
-                Stremio.setCollectionsUrl(ctx, coll)
-                status = "Checking…"
-                scope.launch {
-                    val found = runCatching { Stremio.addons(ctx) }.getOrDefault(emptyList())
-                    status = if (found.isEmpty()) (if (urls.isBlank()) "No addons added." else "Couldn't load any addon. Check the URLs.")
-                    else found.joinToString("\n") { "✓ ${it.name}" + if ("stream" in it.resources) " · streams" else "" }
-                    if (coll.isNotBlank()) status += "\n" + runCatching { com.dekstream.tv.data.Collections.groups(ctx, refresh = true) }
-                        .fold({ "✓ Collections: ${it.size} groups, ${it.sumOf { g -> g.folders.size }} folders" }, { "✗ Collections: ${it.message}" })
-                }
-            }, Icons.Default.Check, primary = true)
+            PillButton("Save and test", { saveAndTest(tmdb) }, Icons.Default.Check, primary = true)
         }
         status?.let { Text(it, color = DS.Text, fontSize = 14.sp, modifier = Modifier.padding(top = 12.dp)) }
     }

@@ -137,7 +137,7 @@ fun DetailExtras(
             val shape = RoundedCornerShape(50)
             Row(Modifier.padding(top = 18.dp).focusRing(shape).clip(shape).border(1.dp, DS.Line, shape).tvClickable(onAddKey)
                 .padding(horizontal = 14.dp, vertical = 8.dp)) {
-                Text("Add a free TMDB key in Settings › Addons for cast photos, trailers and reviews", color = DS.TextDim, fontSize = 13.sp)
+                Text("Add a free TMDB key in Settings › Movie & show details for cast photos, trailers and reviews", color = DS.TextDim, fontSize = 13.sp)
             }
         }
     }

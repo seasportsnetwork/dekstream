@@ -7,6 +7,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -90,7 +91,10 @@ object Stremio {
         sp(c).edit().putString("addons", urls.map { normalizeManifest(it) }.filter { it.startsWith("http") }.joinToString("\n")).apply(); manifests.clear()
     }
     /** Movies & series from your IPTV provider too (false = addons only: IPTV Movies/Series hidden everywhere). */
-    fun iptvVod(c: Context): Boolean = sp(c).getBoolean("iptvVod", true)
+    /** Addons (Stremio streams, e.g. Usenet Ultimate) are switched off for now: none load, playlist movies always show. */
+    const val ADDONS_ENABLED = false
+
+    fun iptvVod(c: Context): Boolean = !ADDONS_ENABLED || sp(c).getBoolean("iptvVod", true)
     fun setIptvVod(c: Context, on: Boolean) { sp(c).edit().putBoolean("iptvVod", on).apply() }
     fun collectionsUrl(c: Context): String = sp(c).getString("collections", "") ?: ""
     fun setCollectionsUrl(c: Context, u: String) { sp(c).edit().putString("collections", u.trim()).apply() }
@@ -113,7 +117,7 @@ object Stremio {
     // ---------------- HTTP ----------------
     private suspend fun getText(url: String, ttlMs: Long = 30 * 60_000L): String = withContext(Dispatchers.IO) {
         cache[url]?.let { (at, body) -> if (System.currentTimeMillis() - at < ttlMs) return@withContext body }
-        http.newCall(Request.Builder().url(url).header("User-Agent", "DekTV").build()).execute().use { r ->
+        http.newCall(request(url)).execute().use { r ->
             if (!r.isSuccessful) error("HTTP ${r.code}")
             val body = r.body?.string() ?: ""
             cache[url] = System.currentTimeMillis() to body
@@ -122,11 +126,24 @@ object Stremio {
     }
     private suspend fun getJson(url: String, ttlMs: Long = 30 * 60_000L) = JSONObject(getText(url, ttlMs))
 
+    /**
+     * TMDB gives two kinds of key: the short "API Key" (sent as api_key=) and the long "Read Access Token"
+     * (starts with eyJ, must be sent as a Bearer header). Either works here.
+     */
+    private fun request(url: String): Request {
+        val b = Request.Builder().header("User-Agent", "DekTV")
+        val u = url.toHttpUrlOrNull()
+        val key = u?.queryParameter("api_key")
+        return if (u != null && u.host == "api.themoviedb.org" && key != null && key.startsWith("eyJ")) {
+            b.url(u.newBuilder().removeAllQueryParameters("api_key").build()).header("Authorization", "Bearer $key").build()
+        } else b.url(url).build()
+    }
+
     // ---------------- Addons ----------------
     private val manifests = ConcurrentHashMap<String, Addon>()
     private fun base(url: String) = url.trim().removeSuffix("/manifest.json").removeSuffix("/")
 
-    suspend fun addons(c: Context): List<Addon> = coroutineScope {
+    suspend fun addons(c: Context): List<Addon> = if (!ADDONS_ENABLED) emptyList() else coroutineScope {
         addonUrls(c).map { u ->
             async {
                 manifests[u] ?: runCatching {
@@ -372,6 +389,13 @@ object Stremio {
             .map { Trailer(it.optString("name").ifBlank { "Trailer" }, it.optString("key")) }.distinctBy { it.youtubeId }.take(6)
         TitleExtras(cast, directors.filter { it.isNotBlank() }.take(3), writers, reviews, trailers)
     }.getOrNull()
+
+    /** True if TMDB accepts the key (v3 API key). */
+    suspend fun testTmdbKey(key: String): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            http.newCall(request("https://api.themoviedb.org/3/configuration?api_key=${enc(key.trim())}")).execute().use { it.isSuccessful }
+        }.getOrDefault(false)
+    }
 
     // ---------------- helpers ----------------
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { optString(it).ifBlank { null } }

@@ -80,7 +80,7 @@ fun SettingsScreen(state: AppState) {
             NavRow(Icons.Default.Palette, "Appearance", "Accent, background, selection style, transparency, guide background") {
                 state.push(Route.AppearanceSettings)
             }
-            NavRow(Icons.Default.Explore, "Addons & Discover", "Your Usenet Ultimate and other Stremio addons, TMDB key for Coming soon") {
+            NavRow(Icons.Default.Explore, "Movie & show details", "TMDB key for cast photos, trailers, reviews and Top 10 this week") {
                 state.push(Route.Addons)
             }
             NavRow(Icons.Default.Tune, "Playback & screen", "Frame rate, guide while watching, start-up, captions, burn-in protection") {
