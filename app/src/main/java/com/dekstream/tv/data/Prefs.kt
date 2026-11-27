@@ -42,6 +42,14 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
     /** League keys shown on the Sports tab, in display order. */
     val sportLeagues: StateFlow<List<String>> = _sportLeagues
 
+    /** Leagues on Home's scores card; null = every league. */
+    private val _homeLeagues = MutableStateFlow(pp.getString("homeLeagues", null)?.split(',')?.filter { it.isNotBlank() })
+    val homeLeagues: StateFlow<List<String>?> = _homeLeagues
+    fun setHomeLeagues(keys: List<String>?) {
+        _homeLeagues.value = keys
+        pp.edit().apply { if (keys == null) remove("homeLeagues") else putString("homeLeagues", keys.joinToString(",")) }.apply()
+    }
+
     fun toggleLeague(key: String) {
         val l = _sportLeagues.value.toMutableList()
         if (!l.remove(key)) l.add(key)

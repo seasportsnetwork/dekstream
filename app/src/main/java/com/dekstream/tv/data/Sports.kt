@@ -73,6 +73,9 @@ class SportsRepo(private val http: OkHttpClient) {
         League("seriea", "Serie A", "Serie A", "soccer/ita.1"),
         League("bund", "Bundesliga", "Bundesliga", "soccer/ger.1"),
         League("ligamx", "Liga MX", "Liga MX", "soccer/mex.1"),
+        League("ligue1", "Ligue 1", "Ligue 1", "soccer/fra.1"),
+        League("uel", "Europa League", "UEL", "soccer/uefa.europa"),
+        League("nwsl", "NWSL", "NWSL", "soccer/usa.nwsl"),
         League("f1", "Formula 1", "F1", "racing/f1", racing = true),
     )
 

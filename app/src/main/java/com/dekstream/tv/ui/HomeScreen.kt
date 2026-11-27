@@ -116,7 +116,11 @@ fun HomeScreen(state: AppState) {
     val favIds by app.prefs.favorites.collectAsState()
     val recentIds by app.prefs.recentChannels.collectAsState()
     val favTeams by app.prefs.favTeams.collectAsState()
-    val leagueKeys by app.prefs.sportLeagues.collectAsState()
+    // Scores card leagues: the ones picked for Home (every league until you choose).
+    val homePick by app.prefs.homeLeagues.collectAsState()
+    val leagueKeys = homePick ?: app.sports.allLeagues.filter { !it.racing }.map { it.key }
+    var pickLeagues by remember { mutableStateOf(false) }
+    if (pickLeagues) LeaguePicker(homePick) { pickLeagues = false }
     val hide by app.prefs.hideScores.collectAsState()
     val reminders by app.reminders.items.collectAsState()
     val all by rememberLoad(Unit) { repo.allChannels() }
@@ -148,13 +152,13 @@ fun HomeScreen(state: AppState) {
         kotlinx.coroutines.coroutineScope {
             empty.map { l ->
                 async {
-                    var found = emptyList<Game>()
-                    for (d in 1..7) {
-                        val day = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, d) }.time
-                        found = runCatching { app.sports.scoreboard(l, fmt.format(day)) }.getOrDefault(emptyList()).filter { it.state == "pre" }
-                        if (found.isNotEmpty()) break
-                    }
-                    l.key to found.sortedBy { it.startMs }
+                    val from = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, 1) }.time
+                    val to = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, 7) }.time
+                    val found = runCatching { app.sports.scoreboard(l, fmt.format(from) + "-" + fmt.format(to)) }.getOrDefault(emptyList())
+                        .filter { it.state == "pre" }.sortedBy { it.startMs }
+                    // Just the next day that has games.
+                    val first = found.firstOrNull()?.let { java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date(it.startMs)) }
+                    l.key to found.filter { java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date(it.startMs)) == first }
                 }
             }.awaitAll().toMap()
         }
@@ -282,7 +286,7 @@ fun HomeScreen(state: AppState) {
                     }
                 }
                 val side: @Composable (Modifier) -> Unit = { m ->
-                    ScoresPanel(gameList, upcoming.valueOrNull().orEmpty(), leagueKeys.mapNotNull { app.sports.league(it) }.filter { !it.racing }, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
+                    ScoresPanel(gameList, upcoming.valueOrNull().orEmpty(), leagueKeys.mapNotNull { app.sports.league(it) }.filter { !it.racing }, { pickLeagues = true }, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
                         onGame = { g -> state.push(Route.GameDetail(g)) })
                 }
                 if (wide) {
@@ -563,7 +567,7 @@ private fun WelcomeSpotlight(modifier: Modifier, onLive: () -> Unit, onSports: (
 /** Live and upcoming scores beside the spotlight, with league tabs. */
 @Composable
 private fun ScoresPanel(
-    games: List<Game>, upcoming: Map<String, List<Game>>, followed: List<com.dekstream.tv.data.League>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
+    games: List<Game>, upcoming: Map<String, List<Game>>, followed: List<com.dekstream.tv.data.League>, onEditLeagues: () -> Unit, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
     modifier: Modifier, onGame: (Game) -> Unit,
 ) {
     var league by rememberSaveable { mutableStateOf<String?>(null) }
@@ -578,7 +582,7 @@ private fun ScoresPanel(
         val t = today[l.key].orEmpty()
         if (t.isNotEmpty()) Section(l, t, false) else Section(l, upcoming[l.key].orEmpty(), true)
     }.let { all -> all.filter { !it.next } + all.filter { it.next } }
-    val shown = sections.filter { league == null || it.l.key == league }
+    val shown = sections.filter { if (league == null) it.list.isNotEmpty() else it.l.key == league }
         .map { if (league == null && it.next) it.copy(list = it.list.take(2)) else it }
     // "Today", "Tomorrow", or "Sat, Nov 29" — every heading says which day its games are on.
     fun dayOf(ms: Long): String {
@@ -605,6 +609,10 @@ private fun ScoresPanel(
                         .background(Brush.horizontalGradient(listOf(Color.Transparent, DS.Card))))
                     if (tabs.canScrollBackward) Box(Modifier.align(Alignment.CenterStart).width(24.dp).height(30.dp)
                         .background(Brush.horizontalGradient(listOf(DS.Card, Color.Transparent))))
+                }
+                val eshape = RoundedCornerShape(50)
+                Box(Modifier.size(30.dp).focusRing(eshape).clip(eshape).tvClickable(onEditLeagues), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Tune, "Choose leagues", tint = DS.TextDim, modifier = Modifier.size(17.dp))
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -908,3 +916,33 @@ private fun LiveNowCard(c: Channel, onClick: () -> Unit, onFocused: (Program?) -
 }
 
 @Suppress("unused") private fun unusedSeries(s: Series) = s
+
+
+/** Pick the leagues Home's scores card shows (all, or just the ones you choose). */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun LeaguePicker(current: List<String>?, onDone: () -> Unit) {
+    val app = DekStreamApp.instance
+    val all = app.sports.allLeagues.filter { !it.racing }
+    var picked by remember { mutableStateOf(current?.toSet() ?: all.map { it.key }.toSet()) }
+    fun save() { app.prefs.setHomeLeagues(if (picked.size == all.size || picked.isEmpty()) null else all.map { it.key }.filter { it in picked }) }
+    androidx.compose.ui.window.Dialog(onDismissRequest = { save(); onDone() }) {
+        Column(Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(22.dp)).background(DS.Surface2).padding(24.dp)) {
+            Text("Leagues on Home", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("Pick the leagues the scores card shows. All shows every league with games this week, and the tabs scroll sideways.",
+                color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Pill("All leagues", picked.size == all.size, onClick = { picked = all.map { it.key }.toSet() })
+                Pill("None", picked.isEmpty(), onClick = { picked = emptySet() })
+            }
+            androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                all.forEach { l ->
+                    val on = l.key in picked
+                    Pill(l.name, on, onClick = { picked = if (on) picked - l.key else picked + l.key }, icon = if (on) Icons.Default.Check else null)
+                }
+            }
+            Row(Modifier.padding(top = 18.dp)) { PillButton("Done", { save(); onDone() }, Icons.Default.Check, primary = true) }
+        }
+    }
+}
