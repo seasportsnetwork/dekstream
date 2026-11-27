@@ -36,6 +36,15 @@ for t in Live Favorites Guide Sports Movies Series Search Settings Home; do
   alive || { echo "App died on $t"; break; }
 done
 
+step "search: keyboard stays closed until OK"
+start --es test_tab Search; sleep 8
+adb shell dumpsys input_method | grep -E "mInputShown" | head -1 > $OUT/kb-landed.txt
+shot "$(printf %02d $n)-search-landed"; n=$((n+1))
+key 23; sleep 3
+adb shell dumpsys input_method | grep -E "mInputShown" | head -1 > $OUT/kb-after-ok.txt
+shot "$(printf %02d $n)-search-ok"; n=$((n+1))
+key 4; sleep 1; key 4; sleep 1
+
 step "live tv: move focus (no autoplay), then OK = preview"
 start --es test_tab Live; sleep 8
 key 22 22; sleep 1; key 20 20 20; sleep 4; shot "$(printf %02d $n)-live-focus"; n=$((n+1))
@@ -131,6 +140,8 @@ fail=0
   if grep -q "FATAL EXCEPTION" $OUT/logcat.txt; then echo "CRASH:"; grep -A25 "FATAL EXCEPTION" $OUT/logcat.txt | head -60; fail=1; fi
   if grep -qE "ANR in $PKG|Application Not Responding: $PKG" $OUT/logcat.txt; then echo "FREEZE (ANR):"; grep -A8 -E "ANR in $PKG" $OUT/logcat.txt | head -30; fail=1; fi
   alive || { echo "App is not running at the end"; fail=1; }
+  if grep -q "mInputShown=true" $OUT/kb-landed.txt 2>/dev/null; then echo "KEYBOARD opened on its own on Search"; fail=1; fi
+  echo "Keyboard: landed -> $(cat $OUT/kb-landed.txt 2>/dev/null | tr -d ' '), after OK -> $(cat $OUT/kb-after-ok.txt 2>/dev/null | tr -d ' ')"
   worst=$(grep -oE "Skipped [0-9]+ frames" $OUT/logcat.txt | grep -oE "[0-9]+" | sort -n | tail -1)
   echo "Worst UI stall: ${worst:-0} skipped frames (~$(( ${worst:-0} * 16 )) ms)"
   [ "${worst:-0}" -gt 300 ] && echo "WARNING: UI stalled more than ~5 s"

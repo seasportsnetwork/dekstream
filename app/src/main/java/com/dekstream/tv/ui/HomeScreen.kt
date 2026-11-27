@@ -243,7 +243,7 @@ fun HomeScreen(state: AppState) {
                     }
                 }
                 val side: @Composable (Modifier) -> Unit = { m ->
-                    ScoresPanel(otherGames, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
+                    ScoresPanel(gameList, leagueKeys, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
                         onGame = { g -> state.push(Route.GameDetail(g)) }, onAll = { state.tab = Tab.Sports })
                 }
                 if (wide) {
@@ -255,7 +255,7 @@ fun HomeScreen(state: AppState) {
                 } else {
                     Column(Modifier.fillMaxWidth().padding(horizontal = pad).padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         spotlight(Modifier.fillMaxWidth().height(240.dp))
-                        if (otherGames.isNotEmpty()) side(Modifier.fillMaxWidth().height(300.dp))
+                        if (gameList.isNotEmpty()) side(Modifier.fillMaxWidth().height(300.dp))
                     }
                 }
             }
@@ -491,12 +491,17 @@ private fun WelcomeSpotlight(modifier: Modifier, onLive: () -> Unit, onSports: (
 /** Live and upcoming scores beside the spotlight, with league tabs. */
 @Composable
 private fun ScoresPanel(
-    games: List<Game>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
+    games: List<Game>, leagueOrder: List<String>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
     modifier: Modifier, onGame: (Game) -> Unit, onAll: () -> Unit,
 ) {
     var league by rememberSaveable { mutableStateOf<String?>(null) }
-    val leagues = games.map { it.league }.distinctBy { it.key }
-    val shown = games.filter { league == null || it.league.key == league }
+    // Every league with games today gets a tab, in the order you follow them in Sports.
+    val rank = { k: String -> leagueOrder.indexOf(k).let { if (it < 0) Int.MAX_VALUE else it } }
+    val byLeague = games.distinctBy { it.league.key + ":" + it.id }.groupBy { it.league.key }
+        .toList().sortedBy { rank(it.first) }
+    val leagues = byLeague.map { it.second.first().league }
+    if (league != null && byLeague.none { it.first == league }) league = null
+    val shown = byLeague.filter { league == null || it.first == league }
     BentoCard(modifier) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -514,6 +519,7 @@ private fun ScoresPanel(
             Spacer(Modifier.height(10.dp))
             when {
                 // Every game, two per row; scrolls inside the card when they don't all fit (focus moving down scrolls it).
+                // All = every league, grouped under a small league heading; a league tab = just that league.
                 shown.isNotEmpty() -> Box(Modifier.weight(1f)) {
                     val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
                     LaunchedEffect(league) { grid.scrollToItem(0) }
@@ -522,8 +528,14 @@ private fun ScoresPanel(
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(4.dp),
                     ) {
-                        gridItems(shown.distinctBy { it.league.key + ":" + it.id }, key = { it.league.key + ":" + it.id }) { g ->
-                            MiniScore(g, hide, g.hasFavorite(favs), Modifier.fillMaxWidth().height(64.dp)) { onGame(g) }
+                        shown.forEach { (key, list) ->
+                            if (league == null) item(key = "h:$key", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                Text(list.first().league.short, color = DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp, modifier = Modifier.padding(start = 2.dp, top = 2.dp))
+                            }
+                            gridItems(list, key = { it.league.key + ":" + it.id }) { g ->
+                                MiniScore(g, hide, g.hasFavorite(favs), Modifier.fillMaxWidth().height(64.dp)) { onGame(g) }
+                            }
                         }
                     }
                     // Soft fade at the bottom while there are more games below.

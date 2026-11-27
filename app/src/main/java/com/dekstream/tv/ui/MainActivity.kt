@@ -44,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.dekstream.tv.DekStreamApp
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.first
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,7 +53,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             TvScale {
                 DekStreamTheme {
-                    Box(Modifier.fillMaxSize().background(DS.Bg)) { Root() }
+                    // Landing on a text box never opens the keyboard: any keyboard request waits here
+                    // until OK is pressed on the box (TvKeyboard.allowed), then goes through.
+                    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+                    androidx.compose.ui.platform.InterceptPlatformTextInput(
+                        interceptor = { request, next ->
+                            androidx.compose.runtime.snapshotFlow { TvKeyboard.allowed }.first { it }
+                            next.startInputMethod(request)
+                        },
+                    ) {
+                        Box(Modifier.fillMaxSize().background(DS.Bg)) { Root() }
+                    }
                 }
             }
         }

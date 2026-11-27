@@ -8,6 +8,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -251,6 +252,12 @@ fun SearchBarPill(onClick: () -> Unit, hint: String = "Channels, movies and show
     }
 }
 
+/**
+ * App-wide keyboard gate. The on-screen keyboard can only start while [allowed] is true; it's set by
+ * pressing OK on a text box (or tapping one) and cleared when focus leaves it. See MainActivity.
+ */
+object TvKeyboard { var allowed by androidx.compose.runtime.mutableStateOf(false) }
+
 /** Whether a search box is taking typing. Pass `readOnly = !edit.editing` to the text field. */
 class TvEdit { var editing by androidx.compose.runtime.mutableStateOf(false) }
 
@@ -265,29 +272,30 @@ fun rememberTvEdit(): TvEdit = androidx.compose.runtime.remember { TvEdit() }
 @Composable
 fun Modifier.tvTextInput(edit: TvEdit? = null): Modifier {
     val kb = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
-    if (edit != null) androidx.compose.runtime.LaunchedEffect(edit.editing) {
-        if (edit.editing) { kotlinx.coroutines.delay(80); kb?.show() }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    fun open() {
+        TvKeyboard.allowed = true
+        if (edit != null) edit.editing = true
+        scope.launch { kotlinx.coroutines.delay(80); kb?.show() }
     }
-    var m = this
-    if (edit != null) {
-        m = m.onFocusChanged { if (!it.isFocused && edit.editing) edit.editing = false }
-            .pointerInput(edit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                        if (ev.type == androidx.compose.ui.input.pointer.PointerEventType.Press) edit.editing = true
-                    }
+    return this
+        .onFocusChanged {
+            if (!it.isFocused) { TvKeyboard.allowed = false; if (edit != null) edit.editing = false }
+        }
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    if (ev.type == androidx.compose.ui.input.pointer.PointerEventType.Press) open()
                 }
             }
-    }
-    return m.onPreviewKeyEvent { e ->
-        val ok = e.key == androidx.compose.ui.input.key.Key.DirectionCenter || e.key == androidx.compose.ui.input.key.Key.Enter ||
-            e.key == androidx.compose.ui.input.key.Key.NumPadEnter
-        if (ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) {
-            if (edit != null && !edit.editing) edit.editing = true else kb?.show()
-            true
-        } else ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown
-    }
+        }
+        .onPreviewKeyEvent { e ->
+            val ok = e.key == androidx.compose.ui.input.key.Key.DirectionCenter || e.key == androidx.compose.ui.input.key.Key.Enter ||
+                e.key == androidx.compose.ui.input.key.Key.NumPadEnter
+            if (ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyUp) { open(); true }
+            else ok && e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown
+        }
 }
 
 fun Modifier.onFocusGained(block: () -> Unit): Modifier =
