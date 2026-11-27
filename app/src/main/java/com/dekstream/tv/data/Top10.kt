@@ -26,6 +26,13 @@ object Top10 {
         return s to year
     }
 
+    /** A playlist title cleaned for display: "4K: The Odyssey (2026) FHD" → "The Odyssey". */
+    fun displayName(raw: String): String {
+        val s = raw.replace(prefix, "").replace(Regex("""\s*[(\[]\s*(?:19|20)\d\d\s*[)\]]"""), "")
+            .replace(Regex("""\s*\b(4K|UHD|FHD|HD|SD|HDR|1080p|720p|2160p)\b\s*$""", RegexOption.IGNORE_CASE), "").trim()
+        return s.ifBlank { raw.trim() }
+    }
+
     private fun <T> pick(popular: List<Pair<String, String?>>, all: List<T>, name: (T) -> String, hasArt: (T) -> Boolean): List<T> {
         val index = HashMap<String, MutableList<Pair<T, String?>>>()
         all.forEach { v -> val (k, y) = key(name(v)); if (k.length >= 2) index.getOrPut(k) { ArrayList() } += v to y }

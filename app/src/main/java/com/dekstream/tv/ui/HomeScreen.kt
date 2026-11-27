@@ -369,25 +369,21 @@ fun HomeScreen(state: AppState) {
                 }
             }
             topMovies.valueOrNull()?.takeIf { it.items.size >= 3 }?.let { t ->
-                item(key = "top-m") {
-                    SectionHeader("Top 10 movies " + if (t.thisWeek) "this week" else "right now",
-                        "The most popular movies in your playlist", modifier = Modifier.padding(horizontal = pad))
-                }
+                item(key = "top-m") { Top10Header("Movies", t.thisWeek, Modifier.padding(horizontal = pad)) }
                 item(key = "top-mr") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        itemsIndexed(t.items, key = { _, v -> "t" + v.streamId }) { i, v -> RankedPoster(i + 1) { MoviePoster(v, state, progress) } }
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                        itemsIndexed(t.items, key = { _, v -> "t" + v.streamId }) { i, v ->
+                            RankedTile(i + 1, v.name, v.poster, progress["vod:${v.streamId}"]?.fraction) { state.push(Route.MovieDetail(v)) }
+                        }
                     }
                 }
             }
             topSeries.valueOrNull()?.takeIf { it.items.size >= 3 }?.let { t ->
-                item(key = "top-s") {
-                    SectionHeader("Top 10 series " + if (t.thisWeek) "this week" else "right now",
-                        "The most popular shows in your playlist", modifier = Modifier.padding(horizontal = pad))
-                }
+                item(key = "top-s") { Top10Header("Series", t.thisWeek, Modifier.padding(horizontal = pad)) }
                 item(key = "top-sr") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(horizontal = pad)) {
                         itemsIndexed(t.items, key = { _, s -> "t" + s.seriesId }) { i, s ->
-                            RankedPoster(i + 1) { PosterCard(s.name, s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }) }
+                            RankedTile(i + 1, s.name, s.cover, null) { state.push(Route.SeriesDetail(s)) }
                         }
                     }
                 }
@@ -408,7 +404,7 @@ fun HomeScreen(state: AppState) {
                 }
                 item(key = "sr-${cat.id}") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s -> PosterCard(s.name, s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }) }
+                        items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s -> PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }) }
                     }
                 }
             }
@@ -672,7 +668,7 @@ private fun MiniScore(g: Game, hide: Boolean, mine: Boolean, modifier: Modifier,
             Text(when { g.isLive -> g.detail; g.state == "pre" -> fmtTime(g.startMs); else -> "Final" },
                 color = if (g.isLive) DS.Live else DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = if (g.broadcasts.isEmpty()) 2 else 1,
                 textAlign = androidx.compose.ui.text.style.TextAlign.End, modifier = Modifier.widthIn(max = 70.dp))
-            g.broadcasts.firstOrNull()?.takeIf { it.isNotBlank() }?.let { NetworkBadge(it, Modifier.padding(top = 4.dp)) }
+            g.broadcasts.firstOrNull()?.takeIf { it.isNotBlank() }?.let { NetworkBadge(it, Modifier.padding(top = 3.dp)) }
         }
     }
 }
@@ -684,28 +680,30 @@ private fun NetworkBadge(raw: String, modifier: Modifier = Modifier) {
     val (label, color) = when {
         "prime" in l || "amazon" in l -> "Prime Video" to Color(0xFF00A8E1)
         "netflix" in l -> "Netflix" to Color(0xFFE50914)
-        "peacock" in l -> "Peacock" to Color(0xFF111111)
-        "apple" in l -> "Apple TV" to Color(0xFF111111)
+        "peacock" in l -> "Peacock" to Color(0xFFF5C518)
+        "apple" in l -> "Apple TV" to Color(0xFFDDDDDD)
         "youtube" in l -> "YouTube" to Color(0xFFFF0000)
         "paramount" in l -> "Paramount+" to Color(0xFF0064FF)
         "max" == l || "hbo" in l -> "Max" to Color(0xFF002BE7)
-        "nfl net" in l -> "NFL Network" to Color(0xFF013369)
+        "nfl net" in l -> "NFL Network" to Color(0xFF3B6FD8)
         "nba tv" in l -> "NBA TV" to Color(0xFF1D428A)
-        "nhl net" in l -> "NHL Network" to Color(0xFF111111)
-        "mlb net" in l -> "MLB Network" to Color(0xFF0A2351)
-        "espn" in l || "secn" in l || "sec network" in l || "accn" in l || "acc network" in l -> raw.uppercase().take(10) to Color(0xFFCC0000)
-        "fox" in l || "fs1" in l || "fs2" in l || "big ten" in l || "btn" in l -> raw.uppercase().take(10) to Color(0xFF00305E)
-        "nbc" in l || "usa net" in l -> raw.uppercase().take(10) to Color(0xFF6A2C91)
-        "cbs" in l -> raw.uppercase().take(10) to Color(0xFF0B4DA2)
-        "abc" in l -> "ABC" to Color(0xFF1A1A1A)
-        "tnt" in l || "trutv" in l || "tbs" in l -> raw.uppercase().take(10) to Color(0xFF1F2A44)
+        "nhl net" in l -> "NHL Network" to Color(0xFFDDDDDD)
+        "mlb net" in l -> "MLB Network" to Color(0xFF3B6FD8)
+        "espn" in l || "secn" in l || "sec network" in l || "accn" in l || "acc network" in l -> raw.take(12) to Color(0xFFCC0000)
+        "fox" in l || "fs1" in l || "fs2" in l || "big ten" in l || "btn" in l -> raw.take(12) to Color(0xFF2A6FDB)
+        "nbc" in l || "usa net" in l -> raw.take(12) to Color(0xFF9B59D0)
+        "cbs" in l -> raw.take(12) to Color(0xFF2F7DE1)
+        "abc" in l -> "ABC" to Color(0xFFDDDDDD)
+        "tnt" in l || "trutv" in l || "tbs" in l -> raw.take(12) to Color(0xFF8A94A6)
         else -> raw.take(12) to Color(0x33FFFFFF)
     }
-    Text(
-        label, color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.3.sp, maxLines = 1,
-        modifier = modifier.clip(RoundedCornerShape(5.dp)).background(color)
-            .border(0.5.dp, Color(0x33FFFFFF), RoundedCornerShape(5.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-    )
+    // Quiet label: a small dot in the network's colour, then the name in dim text.
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(5.dp).clip(RoundedCornerShape(50)).background(if (color == Color(0x33FFFFFF)) DS.TextDim else color))
+        Text(label, color = DS.TextDim, fontSize = 10.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = 4.dp).widthIn(max = 72.dp))
+    }
 }
 
 /** A programme coming up on one of your channels; OK toggles a reminder. */
@@ -760,24 +758,69 @@ private fun resumeRequest(p: ProgressEntry) =
     PlayRequest(p.url, p.title, p.subtitle, isLive = false, progressKey = p.key, poster = p.poster, startPositionMs = p.positionMs)
 
 
+/** "TOP 10" badge + "Movies this week" / "right now". */
 @Composable
-private fun RankedPoster(rank: Int, poster: @Composable () -> Unit) {
-    // Netflix-style: a big outlined number tucked behind the left edge of the poster.
-    Box(Modifier.width(if (rank >= 10) 236.dp else 204.dp)) {
-        Text(
-            "$rank", fontSize = 150.sp, fontWeight = FontWeight.Black, letterSpacing = (-10).sp, maxLines = 1,
-            color = DS.TextDim.copy(alpha = 0.9f),
-            style = androidx.compose.ui.text.TextStyle(drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = 5f)),
-            modifier = Modifier.align(Alignment.BottomStart).offset(y = 22.dp),
-        )
-        Box(Modifier.align(Alignment.TopEnd)) { poster() }
+private fun Top10Header(kind: String, thisWeek: Boolean, modifier: Modifier = Modifier) {
+    Row(modifier.padding(top = 28.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier.clip(RoundedCornerShape(6.dp)).background(Color(0xFFE50914)).padding(horizontal = 7.dp, vertical = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text("TOP", color = Color.White, fontSize = 9.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp, lineHeight = 10.sp)
+            Text("10", color = Color.White, fontSize = 17.sp, fontWeight = FontWeight.Black, lineHeight = 17.sp)
+        }
+        Column(Modifier.padding(start = 12.dp)) {
+            Text("$kind ${if (thisWeek) "this week" else "right now"}", color = DS.Text, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("Most popular in your playlist", color = DS.TextDim, fontSize = 13.sp)
+        }
+    }
+}
+
+/**
+ * Netflix-style ranked tile: a solid outlined number beside the poster, bottoms lined up, the poster
+ * overlapping the number a little. Clean title underneath the poster only.
+ */
+@Composable
+private fun RankedTile(rank: Int, rawTitle: String, image: String?, progress: Float?, onClick: () -> Unit) {
+    val posterW = 140.dp
+    val posterH = 210.dp
+    val numW = if (rank >= 10) 112.dp else 72.dp
+    val shape = RoundedCornerShape(12.dp)
+    val title = remember(rawTitle) { com.dekstream.tv.data.Top10.displayName(rawTitle) }
+    Column {
+        Box(Modifier.width(numW + posterW - 18.dp).height(posterH)) {
+            // Number: filled with the page colour and outlined, so it reads as a cut-out against the background.
+            val numStyle = androidx.compose.ui.text.TextStyle(
+                fontSize = 168.sp, fontWeight = FontWeight.Black, letterSpacing = (-14).sp,
+                platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false),
+                lineHeightStyle = androidx.compose.ui.text.style.LineHeightStyle(
+                    androidx.compose.ui.text.style.LineHeightStyle.Alignment.Bottom, androidx.compose.ui.text.style.LineHeightStyle.Trim.Both),
+                lineHeight = 150.sp,
+            )
+            Box(Modifier.align(Alignment.BottomStart).width(numW + 10.dp), contentAlignment = Alignment.BottomCenter) {
+                Text("$rank", style = numStyle, color = DS.Bg, maxLines = 1, softWrap = false)
+                Text("$rank", style = numStyle.copy(drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = 7f)),
+                    color = DS.TextDim.copy(alpha = 0.85f), maxLines = 1, softWrap = false)
+            }
+            Box(
+                Modifier.align(Alignment.BottomEnd).width(posterW).height(posterH)
+                    .focusRing(shape, 1.06f).clip(shape).background(DS.Surface2).tvClickable(onClick),
+            ) {
+                if (image != null) AsyncImage(image, title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                else Text(title, color = DS.TextDim, fontSize = 13.sp, maxLines = 4, modifier = Modifier.align(Alignment.Center).padding(8.dp))
+                if (progress != null && progress > 0f) Box(Modifier.align(Alignment.BottomStart).fillMaxWidth(progress).height(3.dp).background(DS.Accent))
+            }
+        }
+        Text(title, color = DS.Text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = numW - 18.dp, top = 8.dp).width(posterW))
     }
 }
 
 @Composable
 private fun MoviePoster(v: Vod, state: AppState, progress: Map<String, ProgressEntry>) {
     PosterCard(
-        v.name, v.poster, 140.dp, onClick = { state.push(Route.MovieDetail(v)) },
+        com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 140.dp, onClick = { state.push(Route.MovieDetail(v)) },
         progress = progress["vod:${v.streamId}"]?.fraction,
     )
 }
