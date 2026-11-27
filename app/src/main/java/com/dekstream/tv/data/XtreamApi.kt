@@ -74,16 +74,17 @@ class XtreamApi(private val http: OkHttpClient, val account: Account) {
         return out
     }
 
-    suspend fun vodStreams(categoryId: String): List<Vod> {
+    /** categoryId null = every movie in one call. */
+    suspend fun vodStreams(categoryId: String?): List<Vod> {
         val out = ArrayList<Vod>()
-        parseArray(call("get_vod_streams", "category_id" to categoryId)).objects { o ->
+        parseArray(if (categoryId == null) call("get_vod_streams") else call("get_vod_streams", "category_id" to categoryId)).objects { o ->
             val id = o.i("stream_id", -1)
             if (id < 0) return@objects
             out += Vod(
                 streamId = id,
                 name = o.s("name") ?: "Movie",
                 poster = o.s("stream_icon"),
-                categoryId = o.s("category_id") ?: categoryId,
+                categoryId = o.s("category_id") ?: categoryId ?: "",
                 ext = o.s("container_extension") ?: "mp4",
                 rating = o.s("rating"),
             )
@@ -108,16 +109,16 @@ class XtreamApi(private val http: OkHttpClient, val account: Account) {
         )
     }
 
-    suspend fun series(categoryId: String): List<Series> {
+    suspend fun series(categoryId: String?): List<Series> {
         val out = ArrayList<Series>()
-        parseArray(call("get_series", "category_id" to categoryId)).objects { o ->
+        parseArray(if (categoryId == null) call("get_series") else call("get_series", "category_id" to categoryId)).objects { o ->
             val id = o.i("series_id", -1)
             if (id < 0) return@objects
             out += Series(
                 seriesId = id,
                 name = o.s("name") ?: "Series",
                 cover = o.s("cover"),
-                categoryId = o.s("category_id") ?: categoryId,
+                categoryId = o.s("category_id") ?: categoryId ?: "",
                 plot = o.s("plot"),
                 rating = o.s("rating"),
                 genre = o.s("genre"),

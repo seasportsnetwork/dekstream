@@ -285,6 +285,32 @@ object Stremio {
         }.getOrDefault(emptyList())
     }
 
+    /**
+     * What's popular right now, most popular first, as (title, year): TMDB's weekly trending when a key is
+     * set ("this week"), otherwise Cinemeta's popular list. type = "movie" or "series".
+     */
+    suspend fun popularTitles(c: Context, type: String): Pair<Boolean, List<Pair<String, String?>>> {
+        val key = tmdbKey(c)
+        if (key.isNotBlank()) {
+            val t = if (type == "movie") "movie" else "tv"
+            val list = (1..3).flatMap { page ->
+                runCatching {
+                    val arr = getJson("https://api.themoviedb.org/3/trending/$t/week?language=en-US&page=$page&api_key=${enc(key)}", 6 * 3600_000L)
+                        .optJSONArray("results") ?: return@runCatching emptyList()
+                    (0 until arr.length()).map { i ->
+                        val m = arr.getJSONObject(i)
+                        val name = m.optString(if (t == "movie") "title" else "name")
+                        name to m.optString(if (t == "movie") "release_date" else "first_air_date").take(4).ifBlank { null }
+                    }
+                }.getOrDefault(emptyList())
+            }
+            if (list.isNotEmpty()) return true to list
+        }
+        val list = listOf(0, 50, 100).flatMap { skip -> runCatching { catalog(type, "top", skip = skip) }.getOrDefault(emptyList()) }
+            .map { it.name to it.year?.take(4) }
+        return false to list
+    }
+
     // ---------------- helpers ----------------
     private fun JSONArray?.strings(): List<String> = if (this == null) emptyList() else (0 until length()).mapNotNull { optString(it).ifBlank { null } }
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8").replace("+", "%20").replace("%3A", ":")

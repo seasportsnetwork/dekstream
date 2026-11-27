@@ -55,6 +55,8 @@ class M3uProvider(
     override suspend fun allChannels() = data().live
     override suspend fun vodCategories() = data().vodCats
     override suspend fun vods(categoryId: String) = data().vods.filter { it.categoryId == categoryId }
+    override suspend fun allVods() = data().vods
+    override suspend fun allSeries() = data().series
     override suspend fun seriesCategories() = data().seriesCats
     override suspend fun series(categoryId: String) = data().series.filter { it.categoryId == categoryId }
 

@@ -54,6 +54,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
@@ -164,6 +166,13 @@ fun HomeScreen(state: AppState) {
     val movieRows by rememberLoad(showMovies) {
         if (!showMovies) return@rememberLoad emptyList()
         repo.vodCategories().take(2).map { c -> c to repo.vods(c.id).filter { it.poster != null }.take(30) }.filter { it.second.isNotEmpty() }
+    }
+    // Top 10 from the playlist: what's popular right now that the playlist actually has.
+    val topMovies by rememberLoad(showMovies) {
+        if (!showMovies) com.dekstream.tv.data.Top10.Result(emptyList<Vod>(), false) else com.dekstream.tv.data.Top10.movies(app, repo)
+    }
+    val topSeries by rememberLoad(showSeries) {
+        if (!showSeries) com.dekstream.tv.data.Top10.Result(emptyList<Series>(), false) else com.dekstream.tv.data.Top10.series(app, repo)
     }
     val seriesRows by rememberLoad(showSeries) {
         if (!showSeries) return@rememberLoad emptyList()
@@ -355,6 +364,30 @@ fun HomeScreen(state: AppState) {
                             MoodTile(if (i % 2 == 0) "Genre" else "Mood", m.name, m.art, moodColors[i % moodColors.size],
                                 onClick = { state.push(Route.VodCategory(m.category, false)) },
                                 modifier = Modifier.width(if (wide) 230.dp else 190.dp).height(if (wide) 86.dp else 76.dp))
+                        }
+                    }
+                }
+            }
+            topMovies.valueOrNull()?.takeIf { it.items.size >= 3 }?.let { t ->
+                item(key = "top-m") {
+                    SectionHeader("Top 10 movies " + if (t.thisWeek) "this week" else "right now",
+                        "The most popular movies in your playlist", modifier = Modifier.padding(horizontal = pad))
+                }
+                item(key = "top-mr") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                        itemsIndexed(t.items, key = { _, v -> "t" + v.streamId }) { i, v -> RankedPoster(i + 1) { MoviePoster(v, state, progress) } }
+                    }
+                }
+            }
+            topSeries.valueOrNull()?.takeIf { it.items.size >= 3 }?.let { t ->
+                item(key = "top-s") {
+                    SectionHeader("Top 10 series " + if (t.thisWeek) "this week" else "right now",
+                        "The most popular shows in your playlist", modifier = Modifier.padding(horizontal = pad))
+                }
+                item(key = "top-sr") {
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(horizontal = pad)) {
+                        itemsIndexed(t.items, key = { _, s -> "t" + s.seriesId }) { i, s ->
+                            RankedPoster(i + 1) { PosterCard(s.name, s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }) }
                         }
                     }
                 }
@@ -726,6 +759,20 @@ private fun ChannelNowTile(c: Channel, now: Program?, onClick: () -> Unit) {
 private fun resumeRequest(p: ProgressEntry) =
     PlayRequest(p.url, p.title, p.subtitle, isLive = false, progressKey = p.key, poster = p.poster, startPositionMs = p.positionMs)
 
+
+@Composable
+private fun RankedPoster(rank: Int, poster: @Composable () -> Unit) {
+    // Netflix-style: a big outlined number tucked behind the left edge of the poster.
+    Box(Modifier.width(if (rank >= 10) 236.dp else 204.dp)) {
+        Text(
+            "$rank", fontSize = 150.sp, fontWeight = FontWeight.Black, letterSpacing = (-10).sp, maxLines = 1,
+            color = DS.TextDim.copy(alpha = 0.9f),
+            style = androidx.compose.ui.text.TextStyle(drawStyle = androidx.compose.ui.graphics.drawscope.Stroke(width = 5f)),
+            modifier = Modifier.align(Alignment.BottomStart).offset(y = 22.dp),
+        )
+        Box(Modifier.align(Alignment.TopEnd)) { poster() }
+    }
+}
 
 @Composable
 private fun MoviePoster(v: Vod, state: AppState, progress: Map<String, ProgressEntry>) {

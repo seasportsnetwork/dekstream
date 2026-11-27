@@ -253,6 +253,13 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
         return allChannels().filter { it.name.lowercase().contains(n) }.take(200)
     }
 
+    @Volatile private var allVodCache: List<Vod>? = null
+    @Volatile private var allSeriesCache: List<Series>? = null
+    suspend fun allVods(): List<Vod> = (allVodCache ?: io { provider.allVods() }.distinctBy { it.streamId }.also { allVodCache = it })
+        .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
+    suspend fun allSeries(): List<Series> = (allSeriesCache ?: io { provider.allSeries() }.distinctBy { it.seriesId }.also { allSeriesCache = it })
+        .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
+
     fun searchLoadedVod(q: String): List<Vod> {
         val n = q.trim().lowercase()
         if (n.length < 2) return emptyList()

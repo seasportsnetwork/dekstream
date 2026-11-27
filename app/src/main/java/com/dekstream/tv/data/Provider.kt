@@ -18,10 +18,13 @@ interface Provider {
 
     suspend fun vodCategories(): List<Category> = emptyList()
     suspend fun vods(categoryId: String): List<Vod> = emptyList()
+    /** Every movie in the playlist (for Top 10). Default: category by category, capped. */
+    suspend fun allVods(): List<Vod> = vodCategories().take(40).flatMap { runCatching { vods(it.id) }.getOrDefault(emptyList()) }
     suspend fun vodInfo(v: Vod): VodInfo? = null
 
     suspend fun seriesCategories(): List<Category> = emptyList()
     suspend fun series(categoryId: String): List<Series> = emptyList()
+    suspend fun allSeries(): List<Series> = seriesCategories().take(40).flatMap { runCatching { series(it.id) }.getOrDefault(emptyList()) }
     suspend fun seriesInfo(s: Series): SeriesInfo = SeriesInfo(s.plot, s.cover, s.genre, null, emptyMap())
 
     suspend fun shortEpg(c: Channel): List<Program> = emptyList()
@@ -61,6 +64,8 @@ class XtreamProvider(override val source: Source, http: OkHttpClient) : Provider
     override suspend fun allChannels() = api.liveStreams()
     override suspend fun vodCategories() = api.vodCategories()
     override suspend fun vods(categoryId: String) = api.vodStreams(categoryId)
+    override suspend fun allVods() = api.vodStreams(null)
+    override suspend fun allSeries() = api.series(null)
     override suspend fun vodInfo(v: Vod) = api.vodInfo(v.streamId)
     override suspend fun seriesCategories() = api.seriesCategories()
     override suspend fun series(categoryId: String) = api.series(categoryId)
