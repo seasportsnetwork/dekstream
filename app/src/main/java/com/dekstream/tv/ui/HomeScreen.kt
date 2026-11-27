@@ -136,6 +136,27 @@ fun HomeScreen(state: AppState) {
             .sortedWith(compareBy<Game>({ if (it.isLive) 0 else if (it.state == "pre") 1 else 2 }, { if (it.hasFavorite(favTeams)) 0 else 1 }, { it.startMs }))
     }
 
+    // Followed leagues with no games today: their next games in the coming week (for the scores card).
+    val todayKeys = games.valueOrNull().orEmpty().map { it.league.key }.toSet()
+    val upcoming by rememberLoad(leagueKeys, todayKeys, games is Load.Ok) {
+        if (games !is Load.Ok) return@rememberLoad emptyMap<String, List<Game>>()
+        val fmt = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+        val empty = leagueKeys.mapNotNull { app.sports.league(it) }.filter { !it.racing && it.key !in todayKeys }
+        kotlinx.coroutines.coroutineScope {
+            empty.map { l ->
+                async {
+                    var found = emptyList<Game>()
+                    for (d in 1..7) {
+                        val day = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, d) }.time
+                        found = runCatching { app.sports.scoreboard(l, fmt.format(day)) }.getOrDefault(emptyList()).filter { it.state == "pre" }
+                        if (found.isNotEmpty()) break
+                    }
+                    l.key to found.sortedBy { it.startMs }
+                }
+            }.awaitAll().toMap()
+        }
+    }
+
     val showMovies = HomeLayout.shows("movies")
     val showSeries = HomeLayout.shows("series")
     val showMoods = HomeLayout.shows("moods")
@@ -243,7 +264,7 @@ fun HomeScreen(state: AppState) {
                     }
                 }
                 val side: @Composable (Modifier) -> Unit = { m ->
-                    ScoresPanel(gameList, leagueKeys, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
+                    ScoresPanel(gameList, upcoming.valueOrNull().orEmpty(), leagueKeys.mapNotNull { app.sports.league(it) }.filter { !it.racing }, hide, favTeams, games is Load.Loading, leagueKeys.isEmpty(), m,
                         onGame = { g -> state.push(Route.GameDetail(g)) }, onAll = { state.tab = Tab.Sports })
                 }
                 if (wide) {
@@ -255,7 +276,7 @@ fun HomeScreen(state: AppState) {
                 } else {
                     Column(Modifier.fillMaxWidth().padding(horizontal = pad).padding(top = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         spotlight(Modifier.fillMaxWidth().height(240.dp))
-                        if (gameList.isNotEmpty()) side(Modifier.fillMaxWidth().height(300.dp))
+                        if (leagueKeys.isNotEmpty()) side(Modifier.fillMaxWidth().height(300.dp))
                     }
                 }
             }
@@ -491,17 +512,24 @@ private fun WelcomeSpotlight(modifier: Modifier, onLive: () -> Unit, onSports: (
 /** Live and upcoming scores beside the spotlight, with league tabs. */
 @Composable
 private fun ScoresPanel(
-    games: List<Game>, leagueOrder: List<String>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
+    games: List<Game>, upcoming: Map<String, List<Game>>, followed: List<com.dekstream.tv.data.League>, hide: Boolean, favs: List<com.dekstream.tv.data.FavTeam>, loading: Boolean, noLeagues: Boolean,
     modifier: Modifier, onGame: (Game) -> Unit, onAll: () -> Unit,
 ) {
     var league by rememberSaveable { mutableStateOf<String?>(null) }
-    // Every league with games today gets a tab, in the order you follow them in Sports.
-    val rank = { k: String -> leagueOrder.indexOf(k).let { if (it < 0) Int.MAX_VALUE else it } }
-    val byLeague = games.distinctBy { it.league.key + ":" + it.id }.groupBy { it.league.key }
-        .toList().sortedBy { rank(it.first) }
-    val leagues = byLeague.map { it.second.first().league }
-    if (league != null && byLeague.none { it.first == league }) league = null
-    val shown = byLeague.filter { league == null || it.first == league }
+    // A tab for every league you follow (in your Sports order). Leagues playing today come first in All;
+    // a league with nothing today shows its next games with the day, or says it has none this week.
+    val today = games.distinctBy { it.league.key + ":" + it.id }.groupBy { it.league.key }
+    val extra = today.keys.filter { k -> followed.none { it.key == k } }.mapNotNull { k -> today[k]?.first()?.league }
+    val leagues = followed + extra
+    if (league != null && leagues.none { it.key == league }) league = null
+    data class Section(val l: com.dekstream.tv.data.League, val list: List<Game>, val next: Boolean)
+    val sections = leagues.map { l ->
+        val t = today[l.key].orEmpty()
+        if (t.isNotEmpty()) Section(l, t, false) else Section(l, upcoming[l.key].orEmpty(), true)
+    }.let { all -> all.filter { !it.next } + all.filter { it.next } }
+    val shown = sections.filter { league == null || it.l.key == league }
+        .map { if (league == null && it.next) it.copy(list = it.list.take(2)) else it }
+    fun nextDay(g: Game): String = java.text.SimpleDateFormat("EEE, MMM d", java.util.Locale.US).format(java.util.Date(g.startMs))
     BentoCard(modifier) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -520,7 +548,7 @@ private fun ScoresPanel(
             when {
                 // Every game, two per row; scrolls inside the card when they don't all fit (focus moving down scrolls it).
                 // All = every league, grouped under a small league heading; a league tab = just that league.
-                shown.isNotEmpty() -> Box(Modifier.weight(1f)) {
+                shown.isNotEmpty() && (games.isNotEmpty() || upcoming.isNotEmpty() || !loading) -> Box(Modifier.weight(1f)) {
                     val grid = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
                     LaunchedEffect(league) { grid.scrollToItem(0) }
                     LazyVerticalGrid(
@@ -528,12 +556,18 @@ private fun ScoresPanel(
                         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(4.dp),
                     ) {
-                        shown.forEach { (key, list) ->
-                            if (league == null) item(key = "h:$key", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
-                                Text(list.first().league.short, color = DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp, modifier = Modifier.padding(start = 2.dp, top = 2.dp))
+                        shown.forEach { sec ->
+                            val key = sec.l.key
+                            val label = when {
+                                !sec.next -> if (league == null) sec.l.short else null
+                                sec.list.isEmpty() -> (if (league == null) sec.l.short + " · " else "") + "No games this week"
+                                else -> (if (league == null) sec.l.short + " · " else "No games today · ") + "Next: " + nextDay(sec.list.first())
                             }
-                            gridItems(list, key = { it.league.key + ":" + it.id }) { g ->
+                            if (label != null) item(key = "h:$key", span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                Text(label, color = DS.TextDim, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp, modifier = Modifier.padding(start = 2.dp, top = 2.dp))
+                            }
+                            gridItems(sec.list, key = { it.league.key + ":" + it.id }) { g ->
                                 MiniScore(g, hide, g.hasFavorite(favs), Modifier.fillMaxWidth().height(64.dp)) { onGame(g) }
                             }
                         }
