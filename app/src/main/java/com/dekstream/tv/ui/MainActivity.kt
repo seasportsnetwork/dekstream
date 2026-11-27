@@ -255,6 +255,17 @@ private fun SignedIn() {
     BackHandler(enabled = top != null || state.tab != Tab.Home) {
         if (!state.pop()) state.tab = Tab.Home
     }
+    // On Home with nothing open, Back once shows a hint; Back again within 2 s closes DekTV.
+    var exitArmedAt by androidx.compose.runtime.remember { androidx.compose.runtime.mutableLongStateOf(0L) }
+    val activity = androidx.compose.ui.platform.LocalContext.current as? android.app.Activity
+    BackHandler(enabled = top == null && state.tab == Tab.Home) {
+        val now = System.currentTimeMillis()
+        if (now - exitArmedAt < 2_000) activity?.finish()
+        else {
+            exitArmedAt = now
+            android.widget.Toast.makeText(activity, "Press Back again to exit DekTV", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // Sports heads-ups over every screen.
     SportsAlertWatcher()

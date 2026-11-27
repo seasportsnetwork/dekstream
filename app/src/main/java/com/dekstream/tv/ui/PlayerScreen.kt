@@ -262,7 +262,32 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
                 }
             }
             override fun onPlayerError(e: PlaybackException) {
-                error = e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+                // HTTP status from the provider, if that's what failed.
+                var cause: Throwable? = e
+                var http = 0
+                while (cause != null) {
+                    if (cause is androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException) { http = cause.responseCode; break }
+                    cause = cause.cause
+                }
+                val busy = current.isLive && http in setOf(403, 429, 456, 458, 509, 512, 551, 884)
+                error = when {
+                    busy -> "Your IPTV connection is busy. Another device may be using it (your plan allows a limited number at once)."
+                    http == 401 -> "Your provider rejected the login. Check the username and password in Settings › Playlists."
+                    http == 404 || http == 410 -> "This ${if (current.isLive) "channel" else "title"} isn't available from your provider right now."
+                    e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
+                        e.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT -> "Can't reach your provider. Check the internet connection."
+                    e.errorCode == PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED ||
+                        e.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED -> "This device can't play this stream's format."
+                    else -> e.errorCodeName.removePrefix("ERROR_CODE_").replace('_', ' ').lowercase().replaceFirstChar { it.uppercase() }
+                }
+                if (busy) {
+                    // Other copies would hit the same limit: wait and try again instead of switching.
+                    scope.launch {
+                        delay(8_000)
+                        if (error != null) { player.seekToDefaultPosition(); player.prepare(); player.play() }
+                    }
+                    return
+                }
                 if (current.isLive) {
                     errorsHere++
                     if (errorsHere >= 2) failoverRequest = "stopped working"
@@ -547,9 +572,10 @@ fun PlayerScreen(request: PlayRequest, zapList: List<Channel>, onExit: () -> Uni
 
         error?.let {
             Text(
-                "Playback problem: $it" + if (current.isLive) " · retrying…" else "",
+                it + if (current.isLive) "\nTrying again…" else "",
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 color = Color.White,
-                modifier = Modifier.align(Alignment.Center).padding(top = 80.dp).clip(RoundedCornerShape(10.dp))
+                modifier = Modifier.align(Alignment.Center).padding(top = 80.dp).widthIn(max = 560.dp).clip(RoundedCornerShape(10.dp))
                     .background(Color(0xCC000000)).padding(16.dp),
             )
         }

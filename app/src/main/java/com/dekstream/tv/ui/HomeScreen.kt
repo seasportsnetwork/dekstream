@@ -168,10 +168,11 @@ fun HomeScreen(state: AppState) {
         repo.vodCategories().take(2).map { c -> c to repo.vods(c.id).filter { it.poster != null }.take(30) }.filter { it.second.isNotEmpty() }
     }
     // Top 10 from the playlist: what's popular right now that the playlist actually has.
-    val topMovies by rememberLoad(showMovies) {
+    val topBucket = tick / 21_600_000L // refreshes every 6 hours while Home stays open
+    val topMovies by rememberLoad(showMovies, topBucket) {
         if (!showMovies) com.dekstream.tv.data.Top10.Result(emptyList<Vod>(), false) else com.dekstream.tv.data.Top10.movies(app, repo)
     }
-    val topSeries by rememberLoad(showSeries) {
+    val topSeries by rememberLoad(showSeries, topBucket) {
         if (!showSeries) com.dekstream.tv.data.Top10.Result(emptyList<Series>(), false) else com.dekstream.tv.data.Top10.series(app, repo)
     }
     val seriesRows by rememberLoad(showSeries) {

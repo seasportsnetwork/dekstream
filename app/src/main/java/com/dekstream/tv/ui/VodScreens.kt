@@ -111,7 +111,7 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState, onHer
                 LazyRow(horizontalArrangement = rowSpacing, contentPadding = PaddingValues(end = 20.dp)) {
                     items(list.distinctBy { it.seriesId }.take(40), key = { it.seriesId }) { s ->
                         PosterCard(
-                            s.name, s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) },
+                            com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) },
                             modifier = Modifier.onFocusChanged {
                                 if (it.hasFocus) onHero(HeroItem("s-${s.seriesId}", s.name, s.backdrop ?: s.cover,
                                     listOfNotNull(s.releaseDate?.take(4), s.genre, s.rating?.let { r -> "★ $r" }).joinToString("  ·  ").ifBlank { null },
@@ -137,7 +137,7 @@ private fun CategoryRow(cat: Category, isSeries: Boolean, state: AppState, onHer
                                 info.plot, null, info.backdrop == null))
                         }
                         PosterCard(
-                            v.name, v.poster, 130.dp,
+                            com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 130.dp,
                             progress = progress["vod:${v.streamId}"]?.fraction,
                             onClick = { state.push(Route.MovieDetail(v)) },
                             modifier = Modifier.onFocusChanged { focused = it.hasFocus },
@@ -174,7 +174,7 @@ fun VodCategoryScreen(cat: Category, isSeries: Boolean, state: AppState) {
                     horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s ->
-                        PosterCard(s.name, s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) })
+                        PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 130.dp, onClick = { state.push(Route.SeriesDetail(s)) })
                     }
                 }
             }
@@ -186,7 +186,7 @@ fun VodCategoryScreen(cat: Category, isSeries: Boolean, state: AppState) {
                     horizontalArrangement = Arrangement.spacedBy(14.dp), verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(list.distinctBy { it.streamId }, key = { it.streamId }) { v ->
-                        PosterCard(v.name, v.poster, 130.dp, progress = progress["vod:${v.streamId}"]?.fraction,
+                        PosterCard(com.dekstream.tv.data.Top10.displayName(v.name), v.poster, 130.dp, progress = progress["vod:${v.streamId}"]?.fraction,
                             onClick = { state.push(Route.MovieDetail(v)) })
                     }
                 }
