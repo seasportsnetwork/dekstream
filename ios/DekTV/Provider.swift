@@ -129,7 +129,8 @@ final class M3UProvider: Provider {
         if let p = parsed { return p }
         let file = try await Net.shared.download(src.url)
         defer { try? FileManager.default.removeItem(at: file) }
-        guard let text = String(data: try Data(contentsOf: file), encoding: .utf8) ?? String(data: try Data(contentsOf: file), encoding: .isoLatin1) else {
+        let raw = try Data(contentsOf: file)
+        guard let text = String(data: raw, encoding: .utf8) ?? String(data: raw, encoding: .isoLatin1) else {
             throw NetError.message("Couldn't read the playlist")
         }
         var cats: [String: Category] = [:], vodCats: [String: Category] = [:], serCats: [String: Category] = [:]

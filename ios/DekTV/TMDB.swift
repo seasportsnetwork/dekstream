@@ -19,7 +19,8 @@ struct TitleExtras {
 
 /// TMDB (needs a free key in Settings). Accepts the short API key or the long Read Access Token.
 enum TMDB {
-    static var key: String { AppStore.shared.tmdbKey.trimmingCharacters(in: .whitespacesAndNewlines) }
+    // Read straight from storage so it works off the main thread too (AppStore saves it there).
+    static var key: String { (UserDefaults.standard.string(forKey: "tmdbKey") ?? "").trimmingCharacters(in: .whitespacesAndNewlines) }
     static var hasKey: Bool { !key.isEmpty }
 
     private static func get(_ path: String, _ q: String = "", ttl: TimeInterval = 12 * 3600) async throws -> [String: Any] {
