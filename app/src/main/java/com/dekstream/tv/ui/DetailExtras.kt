@@ -229,7 +229,7 @@ private fun ReviewDialog(r: Review, onClose: () -> Unit) {
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { kotlinx.coroutines.delay(80); runCatching { focus.requestFocus() } }
     Dialog(onDismissRequest = onClose) {
-        Column(Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(20.dp)).background(DS.Surface2).padding(26.dp)) {
+        Column(Modifier.widthIn(max = 640.dp).dialogSheet().padding(26.dp)) {
             Text(r.author + (r.rating?.let { "  ·  ${"%.0f".format(it)}/10" } ?: ""), color = DS.Text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             r.created?.let { Text(it, color = DS.TextDim, fontSize = 12.sp) }
             // Focusable so the remote's Up/Down scroll it.

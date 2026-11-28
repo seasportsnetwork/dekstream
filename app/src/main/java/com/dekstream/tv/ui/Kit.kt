@@ -328,3 +328,11 @@ fun ScreenTitle(title: String, onBack: () -> Unit) {
         Text(title, color = DS.Text, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(start = 16.dp))
     }
 }
+
+/** The panel behind pop-ups: solid dark sheet, soft shadow, hairline edge (same as the long-press menu). */
+@Composable
+fun Modifier.dialogSheet(): Modifier {
+    val color = androidx.compose.ui.graphics.lerp(Appearance.palette.bg, Color.White, if (DS.Light) 0f else 0.07f)
+    val shape = RoundedCornerShape(26.dp)
+    return this.shadow(32.dp, shape).clip(shape).background(color).border(1.dp, Color.White.copy(alpha = 0.08f), shape)
+}

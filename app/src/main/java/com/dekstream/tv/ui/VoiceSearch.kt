@@ -146,7 +146,7 @@ fun VoicePanel(vs: VoiceSearch) {
     if (!vs.listening) return
     Dialog(onDismissRequest = { vs.stop(); vs.listening = false }) {
         Column(
-            Modifier.widthIn(min = 420.dp, max = 560.dp).clip(RoundedCornerShape(24.dp)).background(DS.Surface2)
+            Modifier.widthIn(min = 420.dp, max = 560.dp).dialogSheet()
                 .padding(horizontal = 32.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),

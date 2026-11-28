@@ -165,7 +165,7 @@ fun SourceEditorScreen(existing: Source?, firstRun: Boolean, onDone: () -> Unit,
                 PillButton("Copy from another device", { copying = true }, Icons.Default.Devices)
                 if (copying) androidx.compose.ui.window.Dialog(onDismissRequest = { copying = false },
                     properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-                    Column(Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(22.dp)).background(DS.Surface2)
+                    Column(Modifier.widthIn(max = 640.dp).dialogSheet()
                         .verticalScroll(rememberScrollState()).padding(24.dp)) {
                         Text("Copy from another device", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
                         Text("On the device that's already set up, open Settings › Sync › Send from this device.", color = DS.TextDim,

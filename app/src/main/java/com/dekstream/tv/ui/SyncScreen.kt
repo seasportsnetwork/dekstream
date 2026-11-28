@@ -120,7 +120,7 @@ private fun AllowDialog(p: DeviceSync.Pending) {
     val deny = remember { FocusRequester() }
     LaunchedEffect(p) { kotlinx.coroutines.delay(100); runCatching { deny.requestFocus() } }
     Dialog(onDismissRequest = { DeviceSync.answer(false) }) {
-        Column(Modifier.widthIn(max = 520.dp).clip(RoundedCornerShape(22.dp)).background(DS.Surface2).padding(28.dp)) {
+        Column(Modifier.widthIn(max = 520.dp).dialogSheet().padding(28.dp)) {
             Icon(Icons.Default.Devices, null, tint = DS.Accent)
             Text("${p.from} wants to copy this setup", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
             Text("Playlists, profiles, favorites and appearance" + (if (DeviceSync.includeLogins) ", including playlist logins." else ", without playlist logins.") +

@@ -891,7 +891,7 @@ private fun LeaguePicker(current: List<String>?, onDone: () -> Unit) {
     var picked by remember { mutableStateOf(current?.toSet() ?: all.map { it.key }.toSet()) }
     fun save() { app.prefs.setHomeLeagues(if (picked.size == all.size || picked.isEmpty()) null else all.map { it.key }.filter { it in picked }) }
     androidx.compose.ui.window.Dialog(onDismissRequest = { save(); onDone() }) {
-        Column(Modifier.widthIn(max = 640.dp).clip(RoundedCornerShape(22.dp)).background(DS.Surface2).padding(24.dp)) {
+        Column(Modifier.widthIn(max = 640.dp).dialogSheet().padding(24.dp)) {
             Text("Leagues on Home", color = DS.Text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text("Pick the leagues the scores card shows. All shows every league with games this week, and the tabs scroll sideways.",
                 color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 4.dp, bottom = 14.dp))
