@@ -1,0 +1,62 @@
+name: Build iPhone IPA
+
+# Builds the iPhone app (ios/) on a Mac runner as an unsigned IPA for Sideloadly / AltStore.
+# Published as a pre-release so the Android app's updater (which reads the "latest" release) never picks it up.
+on:
+  push:
+    branches: [main, dev]
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          cd ios && xcodegen generate
+
+      - name: Build
+        run: |
+          cd ios
+          set -o pipefail
+          xcodebuild -project DekTV.xcodeproj -scheme DekTV -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build 2>&1 | tee build.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Show errors
+        if: failure()
+        run: grep -E "error:" ios/build.log | sort -u | head -80
+
+      - name: Package IPA
+        run: |
+          cd ios
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/DekTV.app Payload/
+          zip -qry DekTV.ipa Payload
+          ls -la DekTV.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DekTV-ipa
+          path: ios/DekTV.ipa
+
+      - name: Publish pre-release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v1.0.${{ github.run_number }}
+          name: DekTV for iPhone v1.0.${{ github.run_number }}
+          prerelease: true
+          make_latest: false
+          body: |
+            DekTV for iPhone (unsigned). Install with Sideloadly or AltStore on your computer, signed with your Apple ID.
+          files: ios/DekTV.ipa

@@ -5,6 +5,7 @@ name: Emulator test
 on:
   push:
     branches: [dev]
+    paths-ignore: ['ios/**', '.github/workflows/ios.yml']
   workflow_dispatch:
     inputs:
       soak:

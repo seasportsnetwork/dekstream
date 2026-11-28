@@ -101,7 +101,8 @@ private fun SendPanel() {
                     color = DS.TextDim, fontSize = 14.sp)
                 Text(DeviceSync.sendCode?.let { "${it.take(3)} ${it.substring(3, 6)} ${it.drop(6)}" } ?: "…", color = DS.Text,
                     fontSize = 44.sp, fontWeight = FontWeight.Black, letterSpacing = 3.sp, modifier = Modifier.padding(vertical = 6.dp))
-                Text("Shows up there as \"${DeviceSync.deviceName(ctx)}\"", color = DS.TextDim, fontSize = 13.sp)
+                Text("Shows up there as \"${DeviceSync.deviceName(ctx)}\"" + (DeviceSync.sendAddress?.let { " · address $it" } ?: ""),
+                    color = DS.TextDim, fontSize = 13.sp)
                 Spacer(Modifier.height(12.dp))
                 Pill(if (DeviceSync.includeLogins) "Include playlist logins" else "Without playlist logins", DeviceSync.includeLogins,
                     onClick = { DeviceSync.includeLogins = !DeviceSync.includeLogins }, icon = if (DeviceSync.includeLogins) Icons.Default.Check else Icons.Default.Lock)
