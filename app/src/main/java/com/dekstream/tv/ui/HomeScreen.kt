@@ -124,6 +124,10 @@ fun HomeScreen(state: AppState) {
     val hide by app.prefs.hideScores.collectAsState()
     val reminders by app.reminders.items.collectAsState()
     val all by rememberLoad(Unit) { repo.allChannels() }
+    // Network logos for the scores card come from the playlist's own channel logos.
+    LaunchedEffect(all) {
+        all.valueOrNull()?.let { l -> kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { com.dekstream.tv.data.NetworkLogos.index(l) } }
+    }
 
     // Clock + a minute tick that refreshes "now" everywhere on Home.
     var tick by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -669,6 +673,15 @@ private fun MiniScore(g: Game, hide: Boolean, mine: Boolean, modifier: Modifier,
 /** Where a game is on (ESPN, NBC, Prime Video, Netflix…): a small pill in the network's own colour. */
 @Composable
 private fun NetworkBadge(raw: String, modifier: Modifier = Modifier) {
+    @Suppress("UNUSED_VARIABLE") val v = com.dekstream.tv.data.NetworkLogos.version
+    val logo = remember(raw, v) { com.dekstream.tv.data.NetworkLogos.logo(raw) }
+    if (logo != null) {
+        // The network's logo on a light chip (most logos are drawn for light backgrounds).
+        Box(modifier.clip(RoundedCornerShape(4.dp)).background(Color.White.copy(alpha = 0.92f)).padding(horizontal = 4.dp, vertical = 2.dp)) {
+            AsyncImage(logo, raw, contentScale = ContentScale.Fit, modifier = Modifier.height(14.dp).widthIn(max = 46.dp))
+        }
+        return
+    }
     val l = raw.lowercase()
     val (label, color) = when {
         "prime" in l || "amazon" in l -> "Prime Video" to Color(0xFF00A8E1)
