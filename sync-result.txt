@@ -1,0 +1,1 @@
+sync: hello -> 200 {"app":"dektv","v":2,"name":"AOSP TV on x86","sid":"kXoPUjfLXyvD0UX9"}, 6 bad requests -> 403 403 403 403 403 000 

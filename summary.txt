@@ -1,0 +1,4 @@
+DekTV smoke test
+Keyboard: landed -> mShowRequested=falsemShowExplicitlyRequested=falsemShowForced=falsemInputShown=false, after OK -> mShowRequested=truemShowExplicitlyRequested=truemShowForced=falsemInputShown=true, focus -> text="" class="android.widget.EditText" 
+Worst UI stall: 115 skipped frames (~1840 ms)
+RESULT: PASS

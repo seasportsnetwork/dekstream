@@ -1,0 +1,24 @@
+launch + test playlist
+tab Live
+tab Favorites
+tab Guide
+tab Sports
+tab Movies
+tab Series
+tab Search
+tab Settings
+tab Home
+search: keyboard stays closed until OK
+live tv: move focus (no autoplay), then OK = preview
+player: full screen with quality badge
+player: guide strip (down) and recent channels (left)
+back from player stops it
+game detail (sources tab)
+home scroll
+light theme
+favorites reorder
+shield home screen row
+sync: send screen + fetch setup over the network
+multiview (3 tiles, one-connection mode)
+discover
+update prompt
