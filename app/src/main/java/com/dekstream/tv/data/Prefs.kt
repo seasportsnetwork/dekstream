@@ -11,7 +11,18 @@ import org.json.JSONObject
  * `sp` = this profile + this playlist (favourites, recents, resume points, stream settings).
  * `pp` = this profile across playlists (sports leagues, favourite teams).
  */
-/** A movie ("movie") or series ("series") saved to My list. */
+/** How My Library can be ordered. */
+object LibrarySort {
+    val names = listOf("Recently added", "Title A–Z", "Movies first", "Series first")
+    fun apply(l: List<SavedTitle>, mode: Int): List<SavedTitle> = when (mode) {
+        1 -> l.sortedBy { Top10.displayName(it.name).lowercase().removePrefix("the ") }
+        2 -> l.sortedWith(compareBy({ if (it.kind == "movie") 0 else 1 }, { -it.addedAt }))
+        3 -> l.sortedWith(compareBy({ if (it.kind == "series") 0 else 1 }, { -it.addedAt }))
+        else -> l.sortedByDescending { it.addedAt }
+    }
+}
+
+/** A movie ("movie") or series ("series") saved to My Library. */
 data class SavedTitle(val kind: String, val id: Int, val name: String, val poster: String?, val categoryId: String, val ext: String, val addedAt: Long = 0) {
     fun toVod() = Vod(id, name, poster, categoryId, ext, null)
     fun toSeries() = Series(id, name, poster, categoryId, null, null, null, null)
@@ -230,6 +241,11 @@ class Prefs(context: Context, profileId: String, sourceId: String) {
         _recent.value = l.take(20)
         saveIntList("recent", _recent.value)
     }
+
+    // --- My Library sort: 0 recently added, 1 title A–Z, 2 movies first, 3 series first ---
+    private val _librarySort = MutableStateFlow(sp.getInt("librarySort", 0))
+    val librarySort: StateFlow<Int> = _librarySort
+    fun setLibrarySort(v: Int) { _librarySort.value = v; sp.edit().putInt("librarySort", v).apply() }
 
     // --- My list (movies and series to watch later) ---
     private val _myList = MutableStateFlow(loadMyList())

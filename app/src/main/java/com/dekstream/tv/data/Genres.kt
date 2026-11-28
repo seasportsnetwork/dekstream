@@ -37,7 +37,7 @@ object Genres {
      * Playlist titles in a genre. With a TMDB key: TMDB's most popular titles in that genre, matched against the
      * playlist. Without one: the playlist's own categories whose names mention the genre.
      */
-    suspend fun titles(c: Context, repo: Repo, g: Genre): Result = coroutineScope {
+    suspend fun titles(c: Context, repo: Repo, g: Genre): Result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { coroutineScope {
         if (Stremio.tmdbKey(c).isNotBlank()) {
             val m = async { Stremio.genreTitles(c, "movie", g.movieId) }
             val t = async { g.tvId?.let { Stremio.genreTitles(c, "tv", it) }.orEmpty() }
@@ -51,5 +51,5 @@ object Genres {
         val series = repo.seriesCategories().filter { hit(it.name) }.take(4).flatMap { runCatching { repo.series(it.id) }.getOrDefault(emptyList()) }
             .distinctBy { it.seriesId }.take(80)
         Result(movies, series, false)
-    }
+    } }
 }

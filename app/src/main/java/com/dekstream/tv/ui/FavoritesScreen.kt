@@ -78,6 +78,7 @@ fun FavoritesScreen(state: AppState) {
     val byId = all.valueOrNull().orEmpty().associateBy { it.streamId }
     val favs = favIds.distinct().mapNotNull { byId[it] }
     val myList by app.prefs.myList.collectAsState()
+    val librarySort by app.prefs.librarySort.collectAsState()
     val progress by app.prefs.progress.collectAsState()
 
     LazyVerticalGrid(
@@ -95,13 +96,13 @@ fun FavoritesScreen(state: AppState) {
                         0 -> "${favs.size} channel${if (favs.size == 1) "" else "s"} · " +
                             (if (editing) "move channels with the arrows" else "hold OK on one to remove it")
                         1 -> "${favTeams.size} team${if (favTeams.size == 1) "" else "s"}"
-                        else -> "${myList.size} saved to watch later · hold OK on one for options"
+                        else -> "${myList.size} saved · hold OK on one for options"
                     },
                     color = DS.TextDim, fontSize = 14.sp, modifier = Modifier.padding(top = 2.dp),
                 )
                 Row(Modifier.padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
                     Segmented(listOf("Channels" to Icons.Default.LiveTv, "Teams" to Icons.Default.SportsFootball,
-                        "My list" to Icons.Default.Bookmark), tab) { tab = it }
+                        "My Library" to Icons.Default.Bookmark), tab) { tab = it }
                     if (tab == 0 && favs.size > 1) {
                         Spacer(Modifier.width(12.dp))
                         PillButton(if (editing) "Done" else "Reorder", { editing = !editing }, if (editing) Icons.Default.Check else Icons.Default.SwapHoriz, primary = editing)
@@ -138,11 +139,19 @@ fun FavoritesScreen(state: AppState) {
                     onLongClick = { app.prefs.toggleFavorite(c.streamId) })
             }
         } else if (tab == 2) {
+            if (myList.isNotEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
+                androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    item { Text("Sort", color = DS.TextDim, fontSize = 13.sp, modifier = Modifier.padding(top = 9.dp, end = 4.dp)) }
+                    items(com.dekstream.tv.data.LibrarySort.names.size) { i ->
+                        Pill(com.dekstream.tv.data.LibrarySort.names[i], librarySort == i, onClick = { app.prefs.setLibrarySort(i) })
+                    }
+                }
+            }
             if (myList.isEmpty()) item(span = { GridItemSpan(maxLineSpan) }) {
-                EmptyFavorites("Nothing saved yet", "Hold OK on any movie or series poster and choose Add to My list, or press My list on its page.",
+                EmptyFavorites("Nothing saved yet", "Hold OK on any movie or series poster and choose Add to My Library, or press My Library on its page.",
                     "Browse movies") { state.tab = Tab.Movies }
             }
-            else items(myList, key = { it.kind + it.id }) { t ->
+            else items(com.dekstream.tv.data.LibrarySort.apply(myList, librarySort), key = { it.kind + it.id }) { t ->
                 PosterCard(com.dekstream.tv.data.Top10.displayName(t.name), t.poster, 150.dp,
                     onClick = { if (t.kind == "movie") state.push(Route.MovieDetail(t.toVod())) else state.push(Route.SeriesDetail(t.toSeries())) },
                     progress = if (t.kind == "movie") progress["vod:${t.id}"]?.fraction else null,

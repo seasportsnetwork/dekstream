@@ -167,10 +167,6 @@ fun HomeScreen(state: AppState) {
     val showMovies = HomeLayout.shows("movies")
     val showSeries = HomeLayout.shows("series")
     val showMoods = HomeLayout.shows("moods")
-    val movieRows by rememberLoad(showMovies) {
-        if (!showMovies) return@rememberLoad emptyList()
-        repo.vodCategories().take(2).map { c -> c to repo.vods(c.id).filter { it.poster != null }.take(30) }.filter { it.second.isNotEmpty() }
-    }
     // Top 10 from the playlist: what's popular right now that the playlist actually has.
     val topBucket = tick / 21_600_000L // refreshes every 6 hours while Home stays open
     val topMovies by rememberLoad(showMovies, topBucket) {
@@ -178,10 +174,6 @@ fun HomeScreen(state: AppState) {
     }
     val topSeries by rememberLoad(showSeries, topBucket) {
         if (!showSeries) com.dekstream.tv.data.Top10.Result(emptyList<Series>(), false) else com.dekstream.tv.data.Top10.series(app, repo)
-    }
-    val seriesRows by rememberLoad(showSeries) {
-        if (!showSeries) return@rememberLoad emptyList()
-        repo.seriesCategories().take(2).map { c -> c to repo.series(c.id).filter { it.cover != null }.take(30) }.filter { it.second.isNotEmpty() }
     }
     // Live categories for the "On now" rows.
     val catRows by rememberLoad(HomeLayout.shows("categories")) {
@@ -195,6 +187,7 @@ fun HomeScreen(state: AppState) {
     val lastChannel = recentIds.firstNotNullOfOrNull { byId[it] }
     val cont = if (showMovies || showSeries) progress.values.sortedByDescending { it.updatedAt } else emptyList()
     val myList by app.prefs.myList.collectAsState()
+    val librarySort by app.prefs.librarySort.collectAsState()
     // Long-press menus for posters and Continue watching cards.
     var menuTitle by remember { mutableStateOf<com.dekstream.tv.data.SavedTitle?>(null) }
     var menuCont by remember { mutableStateOf<ProgressEntry?>(null) }
@@ -360,10 +353,10 @@ fun HomeScreen(state: AppState) {
                 }
             }
             if (myList.isNotEmpty() && (showMovies || showSeries) && HomeLayout.shows("mylist")) {
-                item(key = "ml") { SectionHeader("My list", "Saved to watch later · hold OK to remove", modifier = Modifier.padding(horizontal = pad)) }
+                item(key = "ml") { SectionHeader("My Library", "Saved to watch later · hold OK for options", modifier = Modifier.padding(horizontal = pad)) }
                 item(key = "mlr") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(myList, key = { "ml" + it.kind + it.id }) { t ->
+                        items(com.dekstream.tv.data.LibrarySort.apply(myList, librarySort), key = { "ml" + it.kind + it.id }) { t ->
                             PosterCard(com.dekstream.tv.data.Top10.displayName(t.name), t.poster, 140.dp,
                                 onClick = { if (t.kind == "movie") state.push(Route.MovieDetail(t.toVod())) else state.push(Route.SeriesDetail(t.toSeries())) },
                                 progress = if (t.kind == "movie") progress["vod:${t.id}"]?.fraction else null,
@@ -405,27 +398,6 @@ fun HomeScreen(state: AppState) {
                     }
                 }
             }
-            movieRows.valueOrNull().orEmpty().forEach { (cat, list) ->
-                item(key = "m-${cat.id}") {
-                    SectionHeader(cleanCategoryName(cat.name), "Movies", onSeeAll = { state.push(Route.VodCategory(cat, false)) }, modifier = Modifier.padding(horizontal = pad))
-                }
-                item(key = "mr-${cat.id}") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list.distinctBy { it.streamId }, key = { it.streamId }) { v -> MoviePoster(v, state, progress) { menuTitle = com.dekstream.tv.data.SavedTitle.of(v) } }
-                    }
-                }
-            }
-            seriesRows.valueOrNull().orEmpty().forEach { (cat, list) ->
-                item(key = "s-${cat.id}") {
-                    SectionHeader(cleanCategoryName(cat.name), "Series", onSeeAll = { state.push(Route.VodCategory(cat, true)) }, modifier = Modifier.padding(horizontal = pad))
-                }
-                item(key = "sr-${cat.id}") {
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(list.distinctBy { it.seriesId }, key = { it.seriesId }) { s -> PosterCard(com.dekstream.tv.data.Top10.displayName(s.name), s.cover, 140.dp, onClick = { state.push(Route.SeriesDetail(s)) }, onLongClick = { menuTitle = com.dekstream.tv.data.SavedTitle.of(s) }) }
-                    }
-                }
-            }
-
             if (all is Load.Loading) item { LoadView(all) {} }
         }
     }

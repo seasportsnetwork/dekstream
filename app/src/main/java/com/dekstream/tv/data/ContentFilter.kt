@@ -27,7 +27,7 @@ object HomeLayout {
         "upnext" to "Coming up on your channels",
         "categories" to "On now by category",
         "continue" to "Continue watching (movies & shows)",
-        "mylist" to "My list (movies & shows)",
+        "mylist" to "My Library (movies & shows)",
         "moods" to "Genres",
         "movies" to "Movies on Home",
         "series" to "Series on Home",

@@ -282,7 +282,7 @@ fun MovieDetailScreen(v: Vod, state: AppState) {
                             modifier = Modifier.focusRing(RoundedCornerShape(24.dp)),
                         ) {
                             Icon(if (saved) Icons.Default.Check else Icons.Default.Add, null)
-                            Text(if (saved) " On my list" else " My list")
+                            Text(if (saved) " In My Library" else " My Library")
                         }
                         if (resume != null) {
                             Button(
@@ -342,7 +342,7 @@ fun SeriesDetailScreen(s: Series, state: AppState) {
                 val myList by app.prefs.myList.collectAsState()
                 val saved = myList.any { it.kind == "series" && it.id == s.seriesId }
                 Row(Modifier.padding(top = 12.dp)) {
-                    PillButton(if (saved) "On my list" else "My list", { app.prefs.toggleMyList(com.dekstream.tv.data.SavedTitle.of(s)) },
+                    PillButton(if (saved) "In My Library" else "My Library", { app.prefs.toggleMyList(com.dekstream.tv.data.SavedTitle.of(s)) },
                         if (saved) Icons.Default.Check else Icons.Default.Add)
                 }
                 (smeta?.preview?.description?.takeIf { it.isNotBlank() } ?: i?.plot ?: s.plot)?.let { ExpandableText(it, modifier = Modifier.padding(top = 10.dp)) }

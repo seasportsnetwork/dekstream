@@ -74,10 +74,61 @@ class XtreamApi(private val http: OkHttpClient, val account: Account) {
         return out
     }
 
-    /** categoryId null = every movie in one call. */
+    /**
+     * The whole catalog in one call can be tens of MB, so it's read as a stream (one item at a time, in the
+     * background) keeping only the fields Top 10 / genres need, instead of loading it all into memory.
+     */
+    private suspend fun <T> streamAll(action: String, keys: Set<String>, map: (Map<String, String>) -> T?): List<T> = withContext(Dispatchers.IO) {
+        val b = "${account.base}/player_api.php".toHttpUrl().newBuilder()
+            .addQueryParameter("username", account.username).addQueryParameter("password", account.password)
+            .addQueryParameter("action", action)
+        val req = Request.Builder().url(b.build()).header("User-Agent", USER_AGENT).build()
+        val out = ArrayList<T>()
+        http.newCall(req).execute().use { resp ->
+            if (!resp.isSuccessful) throw IOException("Server returned ${resp.code}")
+            val body = resp.body ?: return@use
+            android.util.JsonReader(body.charStream()).use { jr ->
+                jr.isLenient = true
+                if (jr.peek() != android.util.JsonToken.BEGIN_ARRAY) return@use
+                jr.beginArray()
+                val f = HashMap<String, String>(8)
+                while (jr.hasNext() && out.size < 80_000) {
+                    if (jr.peek() != android.util.JsonToken.BEGIN_OBJECT) { jr.skipValue(); continue }
+                    f.clear()
+                    jr.beginObject()
+                    while (jr.hasNext()) {
+                        val k = jr.nextName()
+                        if (k !in keys) { jr.skipValue(); continue }
+                        when (jr.peek()) {
+                            android.util.JsonToken.STRING, android.util.JsonToken.NUMBER -> f[k] = jr.nextString()
+                            android.util.JsonToken.BEGIN_ARRAY -> { // e.g. backdrop_path: take the first string
+                                jr.beginArray()
+                                if (jr.hasNext() && jr.peek() == android.util.JsonToken.STRING) f[k] = jr.nextString()
+                                while (jr.hasNext()) jr.skipValue()
+                                jr.endArray()
+                            }
+                            else -> jr.skipValue()
+                        }
+                    }
+                    jr.endObject()
+                    map(f)?.let { out += it }
+                }
+            }
+        }
+        out
+    }
+
+    private fun Map<String, String>.str(k: String) = get(k)?.trim()?.ifEmpty { null }
+
+    /** categoryId null = every movie (streamed, see [streamAll]). */
     suspend fun vodStreams(categoryId: String?): List<Vod> {
+        if (categoryId == null) return streamAll("get_vod_streams", setOf("stream_id", "name", "stream_icon", "category_id", "container_extension", "rating")) { f ->
+            val id = f.str("stream_id")?.toDoubleOrNull()?.toInt() ?: return@streamAll null
+            Vod(id, f.str("name") ?: "Movie", f.str("stream_icon"), f.str("category_id") ?: "", f.str("container_extension") ?: "mp4", f.str("rating"))
+        }
         val out = ArrayList<Vod>()
-        parseArray(if (categoryId == null) call("get_vod_streams") else call("get_vod_streams", "category_id" to categoryId)).objects { o ->
+        val arr = call("get_vod_streams", "category_id" to categoryId).let { withContext(Dispatchers.Default) { parseArray(it) } }
+        arr.objects { o ->
             val id = o.i("stream_id", -1)
             if (id < 0) return@objects
             out += Vod(
@@ -110,8 +161,14 @@ class XtreamApi(private val http: OkHttpClient, val account: Account) {
     }
 
     suspend fun series(categoryId: String?): List<Series> {
+        if (categoryId == null) return streamAll("get_series", setOf("series_id", "name", "cover", "category_id", "rating", "genre", "releaseDate", "release_date")) { f ->
+            val id = f.str("series_id")?.toDoubleOrNull()?.toInt() ?: return@streamAll null
+            Series(id, f.str("name") ?: "Series", f.str("cover"), f.str("category_id") ?: "", null, f.str("rating"), f.str("genre"),
+                f.str("releaseDate") ?: f.str("release_date"))
+        }
         val out = ArrayList<Series>()
-        parseArray(if (categoryId == null) call("get_series") else call("get_series", "category_id" to categoryId)).objects { o ->
+        val arr = call("get_series", "category_id" to categoryId).let { withContext(Dispatchers.Default) { parseArray(it) } }
+        arr.objects { o ->
             val id = o.i("series_id", -1)
             if (id < 0) return@objects
             out += Series(

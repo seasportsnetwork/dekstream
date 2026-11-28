@@ -85,9 +85,9 @@ fun TitleMenu(t: SavedTitle, state: AppState, onDismiss: () -> Unit) {
         add(MenuAction(if (t.kind == "movie") "Details" else "Open", Icons.Default.Info) {
             if (t.kind == "movie") state.push(Route.MovieDetail(t.toVod())) else state.push(Route.SeriesDetail(t.toSeries()))
         })
-        add(MenuAction(if (on) "Remove from My list" else "Add to My list", if (on) Icons.Default.Check else Icons.Default.Add) {
+        add(MenuAction(if (on) "Remove from My Library" else "Add to My Library", if (on) Icons.Default.Check else Icons.Default.Add) {
             val now = app.prefs.toggleMyList(t)
-            android.widget.Toast.makeText(app, if (now) "Added to My list" else "Removed from My list", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(app, if (now) "Added to My Library" else "Removed from My Library", android.widget.Toast.LENGTH_SHORT).show()
         })
     }
     ActionSheet(com.dekstream.tv.data.Top10.displayName(t.name), if (t.kind == "movie") "Movie" else "Series", t.poster, actions, onDismiss)

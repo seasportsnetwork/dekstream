@@ -255,10 +255,16 @@ class Repo(val provider: Provider, private val prefs: Prefs, private val epg: Ep
 
     @Volatile private var allVodCache: List<Vod>? = null
     @Volatile private var allSeriesCache: List<Series>? = null
-    suspend fun allVods(): List<Vod> = (allVodCache ?: io { provider.allVods() }.distinctBy { it.streamId }.also { allVodCache = it })
-        .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
-    suspend fun allSeries(): List<Series> = (allSeriesCache ?: io { provider.allSeries() }.distinctBy { it.seriesId }.also { allSeriesCache = it })
-        .let { l -> if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) } }
+    private val allLock = kotlinx.coroutines.sync.Mutex()
+    /** Every movie / series (for Top 10 and genres), loaded once and shared; heavy work stays off the main thread. */
+    suspend fun allVods(): List<Vod> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        val l = allVodCache ?: allLock.withLock { allVodCache ?: io { provider.allVods() }.distinctBy { it.streamId }.also { allVodCache = it } }
+        if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) }
+    }
+    suspend fun allSeries(): List<Series> = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        val l = allSeriesCache ?: allLock.withLock { allSeriesCache ?: io { provider.allSeries() }.distinctBy { it.seriesId }.also { allSeriesCache = it } }
+        if (ContentFilter.showAdult) l else l.filter { !ContentFilter.isAdult(it.name) }
+    }
 
     fun searchLoadedVod(q: String): List<Vod> {
         val n = q.trim().lowercase()
