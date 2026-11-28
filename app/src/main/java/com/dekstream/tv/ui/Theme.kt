@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -128,24 +129,30 @@ fun DekStreamTheme(content: @Composable () -> Unit) {
  */
 fun Modifier.focusRing(shape: Shape = RectangleShape, scale: Float = 1.05f): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
-    val s by animateFloatAsState(if (focused) scale else 1f, label = "focusScale")
+    val s = animateFloatAsState(if (focused) scale else 1f, androidx.compose.animation.core.tween(140), label = "focusScale")
     val glow = Appearance.selectionIdx == 2
-    // Coming back to a screen puts focus back on the item you left from.
+    // Coming back to a screen puts focus back on the item you left from. The position is kept in a plain holder
+    // (not Compose state), so scrolling never makes items rebuild; it's only compared when a restore is pending.
     val hash = androidx.compose.runtime.currentCompositeKeyHash
     val fr = remember { androidx.compose.ui.focus.FocusRequester() }
-    var pos by remember { mutableStateOf<androidx.compose.ui.geometry.Offset?>(null) }
-    val want = FocusMemory.restore
-    androidx.compose.runtime.LaunchedEffect(want, pos) {
-        val p = pos ?: return@LaunchedEffect
-        if (want != null && want.hash == hash && kotlin.math.abs(want.x - p.x) < 24f && kotlin.math.abs(want.y - p.y) < 24f) {
-            if (runCatching { fr.requestFocus() }.isSuccess) FocusMemory.restore = null
-        }
-    }
+    val pos = remember { FloatArray(3) } // x, y, known(1)
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     this
         .focusRequester(fr)
-        .onGloballyPositioned { pos = it.positionInRoot() }
-        .onFocusChanged { focused = it.isFocused; if (it.isFocused) pos?.let { p -> FocusMemory.last = FocusMemory.Spot(hash, p.x, p.y) } }
-        .graphicsLayer { scaleX = s; scaleY = s }
+        .onGloballyPositioned {
+            val p = it.positionInRoot()
+            pos[0] = p.x; pos[1] = p.y; pos[2] = 1f
+            val want = FocusMemory.restore
+            if (want != null && want.hash == hash && kotlin.math.abs(want.x - p.x) < 24f && kotlin.math.abs(want.y - p.y) < 24f) {
+                FocusMemory.restore = null
+                scope.launch { runCatching { fr.requestFocus() } }
+            }
+        }
+        .onFocusChanged {
+            if (focused != it.isFocused) focused = it.isFocused
+            if (it.isFocused && pos[2] == 1f) FocusMemory.last = FocusMemory.Spot(hash, pos[0], pos[1])
+        }
+        .graphicsLayer { val v = s.value; scaleX = v; scaleY = v }
         .then(
             when {
                 !focused -> Modifier

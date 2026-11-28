@@ -33,9 +33,19 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 optimizes the code (big win for Compose smoothness). Names are kept (see proguard-rules.pro)
+            // so crash reports in Settings stay readable.
+            isMinifyEnabled = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             val rel = signingConfigs.getByName("release")
             signingConfig = if (rel.storeFile != null) rel else signingConfigs.getByName("debug")
+        }
+        debug {
+            // CI's emulator test passes -Pminify so it runs R8-optimized code like the release does.
+            if (project.hasProperty("minify")) {
+                isMinifyEnabled = true
+                proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            }
         }
     }
 
@@ -75,5 +85,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     // QR codes: drawing them (setup from phone / sync) and scanning them with Google's scanner on the tablet.
     implementation("com.google.zxing:core:3.5.3")
+    // Installs the Compose libraries' startup/scroll profiles so the UI code is compiled ahead of time (smoother).
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
 }

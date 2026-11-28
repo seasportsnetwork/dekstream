@@ -30,7 +30,7 @@ jobs:
       - name: Build debug APK
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug -PappVersionName=test-${{ github.run_number }}
+          ./gradlew --no-daemon assembleDebug -Pminify -PappVersionName=test-${{ github.run_number }}
 
       - name: Enable KVM
         run: |
