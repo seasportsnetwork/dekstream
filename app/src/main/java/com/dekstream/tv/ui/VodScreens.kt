@@ -230,12 +230,13 @@ fun MovieDetailScreen(v: Vod, state: AppState) {
 
     Box(Modifier.fillMaxSize().background(DS.Bg)) {
         if (backdrop != null) AsyncImage(backdrop, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(listOf(DS.Bg, DS.Bg.copy(alpha = 0.85f), Color.Transparent))))
+        // Fade only behind the text, so the artwork reaches the left edge (no dark band where the menu was).
+        Box(Modifier.fillMaxSize().background(Brush.horizontalGradient(0f to DS.Bg.copy(alpha = 0.78f), 0.45f to DS.Bg.copy(alpha = 0.5f), 0.8f to Color.Transparent)))
         Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent, DS.Bg))))
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 40.dp, end = 40.dp, top = 24.dp, bottom = 40.dp)) {
-            item { Box(Modifier.safeDrawingPadding()) { BackHeader("", state) } }
+            item { Box(Modifier.safeDrawingPadding()) { BackPill({ state.pop() }, onImage = true) } }
             item {
-                Column(Modifier.fillMaxWidth(0.6f).padding(top = 40.dp)) {
+                Column(Modifier.fillMaxWidth(0.6f).padding(top = 24.dp)) {
                     if (p?.logo != null) {
                         AsyncImage(p.logo, p.name, contentScale = ContentScale.Fit, alignment = Alignment.CenterStart,
                             modifier = Modifier.height(110.dp).fillMaxWidth())

@@ -39,6 +39,15 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,13 +66,20 @@ fun Shell(state: AppState) {
         val wide = maxWidth >= 720.dp
         if (wide) {
             if (Appearance.sidebarMode == 2) {
-                // Auto-hide: the page keeps the slim strip's width; the opened menu slides over it.
+                // Auto-hide: the page uses the whole screen. Left at the page's left edge (or a tap on the
+                // screen's edge) slides the menu in over it; it slides away when focus leaves it.
+                var railOpen by remember { mutableStateOf(false) }
+                val fm = androidx.compose.ui.platform.LocalFocusManager.current
                 Box(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxSize()) {
-                        Spacer(Modifier.width(RAIL_SLIM + 1.dp))
-                        Box(Modifier.weight(1f).fillMaxHeight()) { TabContent(state) }
-                    }
-                    SideRail(state, overlay = true)
+                    Box(Modifier.fillMaxSize().onKeyEvent { e ->
+                        if (e.type == androidx.compose.ui.input.key.KeyEventType.KeyDown && e.key == androidx.compose.ui.input.key.Key.DirectionLeft) {
+                            if (!fm.moveFocus(androidx.compose.ui.focus.FocusDirection.Left)) railOpen = true
+                            true
+                        } else false
+                    }) { TabContent(state) }
+                    Box(Modifier.align(Alignment.CenterStart).fillMaxHeight().width(14.dp)
+                        .pointerInput(Unit) { detectTapGestures { railOpen = true } })
+                    AutoHideRail(state, railOpen, onClose = { railOpen = false })
                 }
             } else Row(Modifier.fillMaxSize()) {
                 SideRail(state)
@@ -105,6 +121,71 @@ private val sidebarGroups: List<Pair<String?, List<Tab>>> = listOf(
 )
 
 private val RAIL_SLIM = 76.dp
+
+/** Auto-hide menu: off screen until opened, then slides in over the page (only moved and faded, never re-laid out). */
+@Composable
+private fun AutoHideRail(state: AppState, open: Boolean, onClose: () -> Unit) {
+    val ease = androidx.compose.animation.core.FastOutSlowInEasing
+    val progress = androidx.compose.animation.core.animateFloatAsState(if (open) 1f else 0f,
+        androidx.compose.animation.core.tween(if (open) 240 else 200, easing = ease), label = "rail")
+    val shown by remember { derivedStateOf { progress.value > 0.001f } }
+    if (!open && !shown) return
+    val first = remember { FocusRequester() }
+    var hadFocus by remember { mutableStateOf(false) }
+    val fm = androidx.compose.ui.platform.LocalFocusManager.current
+    LaunchedEffect(open) { if (open) { kotlinx.coroutines.delay(16); runCatching { first.requestFocus() } } else hadFocus = false }
+    androidx.activity.compose.BackHandler(enabled = open) { fm.moveFocus(androidx.compose.ui.focus.FocusDirection.Right); onClose() }
+    val visible = visibleTabs()
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().graphicsLayer { alpha = progress.value }
+            .background(Brush.horizontalGradient(0f to Color.Black.copy(alpha = 0.6f), 0.45f to Color.Transparent)))
+        Column(
+            Modifier
+                .graphicsLayer { translationX = -(1f - progress.value) * RAIL_OPEN.toPx() }
+                .onFocusChanged { if (it.hasFocus) hadFocus = true else if (hadFocus) { hadFocus = false; onClose() } }
+                .width(RAIL_OPEN)
+                .fillMaxHeight()
+                .background(if (DS.Light) Color(0xFFFAFAFB) else Appearance.palette.surface.copy(alpha = 0.98f))
+                .padding(horizontal = 12.dp, vertical = 14.dp),
+        ) {
+            Box(Modifier.padding(start = 6.dp, bottom = 12.dp).height(34.dp), contentAlignment = Alignment.CenterStart) { BrandMark(26.dp, nameSize = 18) }
+            Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                sidebarGroups.forEach { (label, tabs) ->
+                    val shownTabs = tabs.filter { it in visible }
+                    if (shownTabs.isEmpty()) return@forEach
+                    if (label != null) Text(label, color = DS.TextDim, fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(start = 10.dp, top = 16.dp, bottom = 6.dp))
+                    shownTabs.forEach { t ->
+                        Box(if (t == state.tab || (state.tab !in visible && t == shownTabs.first())) Modifier.focusRequester(first) else Modifier) {
+                            SidebarItem(t, state.tab == t, 1f) {
+                                state.tab = t
+                                fm.moveFocus(androidx.compose.ui.focus.FocusDirection.Right)
+                                onClose()
+                            }
+                        }
+                    }
+                }
+            }
+            com.dekstream.tv.DekStreamApp.instance.session?.let { s ->
+                var focused by remember { mutableStateOf(false) }
+                val shape = RoundedCornerShape(12.dp)
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 10.dp).onFocusChanged { focused = it.isFocused }
+                        .clip(shape).background(if (focused) DS.Invert else Color.Transparent)
+                        .clickable { state.tab = Tab.Profile; onClose() }.padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Avatar(s.profile, 34.dp)
+                    Column(Modifier.padding(start = 10.dp).weight(1f)) {
+                        Text(s.profile.name, color = if (focused) DS.OnInvert else DS.Text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                        Text(s.source.name, color = if (focused) DS.OnInvert.copy(alpha = 0.7f) else DS.TextDim, fontSize = 12.sp, maxLines = 1,
+                            overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
 private val RAIL_OPEN = 228.dp
 
 @Composable

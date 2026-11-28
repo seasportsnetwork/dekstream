@@ -44,6 +44,7 @@ sealed interface Route {
     data class MovieDetail(val vod: Vod) : Route
     data class SeriesDetail(val series: Series) : Route
     data class VodCategory(val category: Category, val isSeries: Boolean) : Route
+    data class Genre(val name: String) : Route
     data class GameDetail(val game: Game) : Route
     data object SportsSettings : Route
     data class KidsRules(val profileId: String) : Route

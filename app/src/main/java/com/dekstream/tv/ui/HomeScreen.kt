@@ -183,13 +183,6 @@ fun HomeScreen(state: AppState) {
         if (!showSeries) return@rememberLoad emptyList()
         repo.seriesCategories().take(2).map { c -> c to repo.series(c.id).filter { it.cover != null }.take(30) }.filter { it.second.isNotEmpty() }
     }
-    val moods by rememberLoad(showMoods) {
-        if (!showMoods) return@rememberLoad emptyList()
-        repo.vodCategories().take(8).mapNotNull { c ->
-            val art = runCatching { repo.vods(c.id).firstOrNull { it.poster != null }?.poster }.getOrNull()
-            Mood(c, cleanCategoryName(c.name), art)
-        }
-    }
     // Live categories for the "On now" rows.
     val catRows by rememberLoad(HomeLayout.shows("categories")) {
         if (!HomeLayout.shows("categories")) return@rememberLoad emptyList()
@@ -379,16 +372,15 @@ fun HomeScreen(state: AppState) {
                     }
                 }
             }
-            val moodList = moods.valueOrNull().orEmpty()
-            if (moodList.isNotEmpty()) {
-                item { SectionHeader("Genres", modifier = Modifier.padding(horizontal = pad)) }
-                item {
+            if (showMoods && (showMovies || showSeries)) {
+                item(key = "genres-h") { SectionHeader("Genres", "Browse your playlist by genre", modifier = Modifier.padding(horizontal = pad)) }
+                item(key = "genres") {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(horizontal = pad)) {
-                        items(moodList, key = { it.category.id }) { m ->
-                            val i = moodList.indexOf(m)
-                            MoodTile(if (i % 2 == 0) "Genre" else "Mood", m.name, m.art, moodColors[i % moodColors.size],
-                                onClick = { state.push(Route.VodCategory(m.category, false)) },
-                                modifier = Modifier.width(if (wide) 230.dp else 190.dp).height(if (wide) 86.dp else 76.dp))
+                        items(com.dekstream.tv.data.Genres.all, key = { "g" + it.name }) { g ->
+                            val i = com.dekstream.tv.data.Genres.all.indexOf(g)
+                            MoodTile("Genre", g.name, null, moodColors[i % moodColors.size],
+                                onClick = { state.push(Route.Genre(g.name)) },
+                                modifier = Modifier.width(if (wide) 200.dp else 170.dp).height(if (wide) 80.dp else 72.dp))
                         }
                     }
                 }

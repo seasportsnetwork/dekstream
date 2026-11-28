@@ -33,7 +33,10 @@ object Top10 {
         return s.ifBlank { raw.trim() }
     }
 
-    private fun <T> pick(popular: List<Pair<String, String?>>, all: List<T>, name: (T) -> String, hasArt: (T) -> Boolean): List<T> {
+    fun <T> match(popular: List<Pair<String, String?>>, all: List<T>, limit: Int, name: (T) -> String, hasArt: (T) -> Boolean): List<T> =
+        pick(popular, all, name, hasArt, limit)
+
+    private fun <T> pick(popular: List<Pair<String, String?>>, all: List<T>, name: (T) -> String, hasArt: (T) -> Boolean, limit: Int = 10): List<T> {
         val index = HashMap<String, MutableList<Pair<T, String?>>>()
         all.forEach { v -> val (k, y) = key(name(v)); if (k.length >= 2) index.getOrPut(k) { ArrayList() } += v to y }
         val out = ArrayList<T>()
@@ -46,7 +49,7 @@ object Top10 {
             val sameYear = cands.filter { (_, y) -> year == null || y == null || kotlin.math.abs((y.toIntOrNull() ?: 0) - (year.toIntOrNull() ?: 0)) <= 1 }
             val best = sameYear.sortedByDescending { if (hasArt(it.first)) 1 else 0 }.firstOrNull()?.first ?: continue
             out += best; used += k
-            if (out.size == 10) break
+            if (out.size == limit) break
         }
         return out
     }

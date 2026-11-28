@@ -324,6 +324,7 @@ private fun SignedIn() {
         is Route.MovieDetail -> MovieDetailScreen(top.vod, state)
         is Route.SeriesDetail -> SeriesDetailScreen(top.series, state)
         is Route.VodCategory -> VodCategoryScreen(top.category, top.isSeries, state)
+        is Route.Genre -> GenreScreen(top.name, state)
         is Route.GameDetail -> GameDetailScreen(top.game, state)
         Route.SportsSettings -> SportsSettingsScreen(state)
         is Route.Multiview -> MultiviewScreen(top.channels, top.games, onExit = { state.pop() })

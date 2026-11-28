@@ -390,6 +390,23 @@ object Stremio {
         TitleExtras(cast, directors.filter { it.isNotBlank() }.take(3), writers, reviews, trailers)
     }.getOrNull()
 
+    /** TMDB's most popular titles in a genre (kind "movie" or "tv"), as (title, year), about 100 of them. */
+    suspend fun genreTitles(c: Context, kind: String, genreId: Int): List<Pair<String, String?>> = coroutineScope {
+        val key = tmdbKey(c).ifBlank { return@coroutineScope emptyList() }
+        (1..5).map { page ->
+            async {
+                runCatching {
+                    val arr = getJson("https://api.themoviedb.org/3/discover/$kind?with_genres=$genreId&sort_by=popularity.desc&vote_count.gte=40" +
+                        "&include_adult=false&language=en-US&page=$page&api_key=${enc(key)}", 12 * 3600_000L).optJSONArray("results") ?: return@runCatching emptyList()
+                    (0 until arr.length()).map { i ->
+                        val m = arr.getJSONObject(i)
+                        m.optString(if (kind == "movie") "title" else "name") to m.optString(if (kind == "movie") "release_date" else "first_air_date").take(4).ifBlank { null }
+                    }
+                }.getOrDefault(emptyList())
+            }
+        }.awaitAll().flatten()
+    }
+
     /** True if TMDB accepts the key (v3 API key). */
     suspend fun testTmdbKey(key: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {

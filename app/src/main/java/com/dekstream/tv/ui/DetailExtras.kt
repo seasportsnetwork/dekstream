@@ -21,6 +21,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -65,6 +68,18 @@ import com.dekstream.tv.data.Review
 import com.dekstream.tv.data.Stremio
 import com.dekstream.tv.data.TitleExtras
 import com.dekstream.tv.data.Trailer
+
+/** Gentle focus for cards: a slight lift and a thin light outline (instead of the heavy selection ring). */
+@Composable
+private fun Modifier.softFocus(shape: androidx.compose.ui.graphics.Shape): Modifier {
+    var focused by remember { mutableStateOf(false) }
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (focused) 1.035f else 1f,
+        androidx.compose.animation.core.tween(160), label = "lift")
+    return this
+        .onFocusChanged { focused = it.isFocused }
+        .graphicsLayer { scaleX = scale; scaleY = scale }
+        .border(if (focused) 2.dp else 1.dp, if (focused) Color.White.copy(alpha = 0.85f) else DS.Line, shape)
+}
 
 /** Summary that shows 4 lines with "Show more" (OK expands, again collapses). */
 @Composable
@@ -162,7 +177,7 @@ private fun ExtrasLabel(t: String) {
 private fun CastCircle(c: CastMember) {
     Column(Modifier.width(118.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
-            Modifier.size(104.dp).focusRing(CircleShape, 1.06f).clip(CircleShape)
+            Modifier.size(96.dp).softFocus(CircleShape).clip(CircleShape)
                 .background(Brush.linearGradient(listOf(DS.Surface2, DS.Card))).tvClickable({}),
             contentAlignment = Alignment.Center,
         ) {
@@ -179,12 +194,12 @@ private fun CastCircle(c: CastMember) {
 @Composable
 private fun TrailerCard(t: Trailer, onClick: () -> Unit) {
     val shape = RoundedCornerShape(12.dp)
-    Column(Modifier.width(260.dp)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).focusRing(shape, 1.05f).clip(shape).background(DS.Surface2).tvClickable(onClick),
+    Column(Modifier.width(240.dp)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).softFocus(shape).clip(shape).background(DS.Surface2).tvClickable(onClick),
             contentAlignment = Alignment.Center) {
             AsyncImage("https://img.youtube.com/vi/${t.youtubeId}/hqdefault.jpg", t.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-            Box(Modifier.size(46.dp).clip(CircleShape).background(Color(0xB3000000)), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.PlayArrow, "Play trailer", tint = Color.White, modifier = Modifier.size(28.dp))
+            Box(Modifier.size(38.dp).clip(CircleShape).background(Color(0x99000000)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.PlayArrow, "Play trailer", tint = Color.White, modifier = Modifier.size(22.dp))
             }
         }
         Text(t.name, color = DS.TextDim, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
@@ -194,18 +209,18 @@ private fun TrailerCard(t: Trailer, onClick: () -> Unit) {
 @Composable
 private fun ReviewCard(r: Review, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
-    Column(Modifier.width(420.dp).height(196.dp).focusRing(shape, 1.03f).clip(shape).background(DS.Card).border(1.dp, DS.Line, shape)
-        .tvClickable(onClick).padding(18.dp)) {
+    Column(Modifier.width(360.dp).heightIn(min = 104.dp, max = 172.dp).softFocus(shape).clip(shape).background(DS.Card)
+        .tvClickable(onClick).padding(horizontal = 16.dp, vertical = 14.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(r.author, color = DS.Text, fontSize = 16.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            Text(r.author, color = DS.Text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false))
             r.rating?.let {
                 Text("${if (it % 1.0 == 0.0) it.toInt().toString() else "%.1f".format(it)}/10", color = DS.Text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(start = 10.dp).clip(RoundedCornerShape(50)).background(DS.Surface2).padding(horizontal = 10.dp, vertical = 3.dp))
             }
         }
-        Text(r.content, color = DS.TextDim, fontSize = 14.sp, lineHeight = 20.sp, maxLines = 5, overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 10.dp))
+        Text(r.content, color = DS.TextDim, fontSize = 13.sp, lineHeight = 19.sp, maxLines = 4, overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 8.dp))
     }
 }
 
@@ -257,6 +272,10 @@ fun TrailerPlayer(t: Trailer, onClose: () -> Unit) {
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
                         settings.mediaPlaybackRequiresUserGesture = false
+                        // Lay the page out at full HD so YouTube serves its HD stream, drawn by the GPU.
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
+                        setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
                         isFocusable = false
                         webChromeClient = WebChromeClient()
                         webViewClient = object : WebViewClient() {
@@ -265,7 +284,7 @@ fun TrailerPlayer(t: Trailer, onClose: () -> Unit) {
                         }
                         val id = t.youtubeId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }
                         val html = """
-                            <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+                            <!DOCTYPE html><html><head><meta name="viewport" content="width=1920,initial-scale=1">
                             <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{position:absolute;inset:0;width:100%;height:100%}</style></head>
                             <body><div id="p"></div>
                             <script src="https://www.youtube.com/iframe_api"></script>
@@ -273,8 +292,8 @@ fun TrailerPlayer(t: Trailer, onClose: () -> Unit) {
                               var player;
                               function onYouTubeIframeAPIReady(){
                                 player=new YT.Player('p',{videoId:'$id',host:'https://www.youtube-nocookie.com',
-                                  playerVars:{autoplay:1,controls:1,rel:0,modestbranding:1,playsinline:1,fs:0,iv_load_policy:3,origin:'https://seasportsnetwork.github.io'},
-                                  events:{onReady:function(e){e.target.playVideo();}}});
+                                  playerVars:{autoplay:1,controls:1,rel:0,modestbranding:1,playsinline:1,fs:0,iv_load_policy:3,vq:'hd1080',origin:'https://seasportsnetwork.github.io'},
+                                  events:{onReady:function(e){ try{e.target.setPlaybackQuality('hd1080');}catch(x){} e.target.setVolume(100); e.target.unMute(); e.target.playVideo(); }}});
                               }
                               function toggle(){ if(!player||!player.getPlayerState) return; player.getPlayerState()==1?player.pauseVideo():player.playVideo(); }
                               function skip(s){ if(player&&player.getCurrentTime) player.seekTo(Math.max(0,player.getCurrentTime()+s),true); }

@@ -267,7 +267,7 @@ fun AppearanceScreen(state: AppState) {
                 CategoryChip(name, Appearance.sidebarMode == i) { Appearance.sidebarMode = i; st.sidebarMode = i }
             }
         }
-        Text("Auto-hide keeps a slim strip of icons; move left onto it and it slides open over the page.",
+        Text("Auto-hide gives the page the whole screen; press Left at the left edge (or tap the edge) and the menu slides out.",
             color = DS.TextDim, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
 
         SectionLabel("PANEL TRANSPARENCY")
